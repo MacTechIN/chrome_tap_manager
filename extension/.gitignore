@@ -1,0 +1,9 @@
+node_modules
+.output
+.wxt
+stats.html
+stats-*.json
+.env
+.env.*
+!.env.example
+*.log
