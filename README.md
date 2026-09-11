@@ -64,7 +64,7 @@
 
 | 날짜 | 버전 / 태그 | 커밋 | 내용 |
 |---|---|---|---|
-| 2026-09-11 | `v0.2.0` | (아래 갱신) | 정리 모델 "창 = 주제" 확정(기능정의서 v0.2), Extension 개발 계획서 v0.2, 앱 격리 폴더 구조(`extension/` `desktop/` `bridge/` `protocol/`), `history.md`/`README.md` 신설, E00 완료, E01 WXT 스캐폴딩(`extension/` 프로젝트, 빌드·테스트·lint 통과) |
+| 2026-09-11 | `v0.2.0` | `420f0de` | 정리 모델 "창 = 주제" 확정(기능정의서 v0.2), Extension 개발 계획서 v0.2, 앱 격리 폴더 구조(`extension/` `desktop/` `bridge/` `protocol/`), `history.md`/`README.md` 신설, E00 완료, E01 WXT 스캐폴딩(`extension/` 프로젝트, 빌드·테스트·lint 통과) |
 | 2026-09-11 | `v0.1.0` | `2f2db03` | 프로젝트 정의서, 기술 리서치(`docs/research.md`), 기능정의서(`docs/functional_spec.md`), CLAUDE.md |
 
 태그 규칙: 루트 `v0.x.y`는 문서/전체 마일스톤, 앱별로 `ext-v0.x.y`, `desktop-v0.x.y`, `bridge-v0.x.y`.

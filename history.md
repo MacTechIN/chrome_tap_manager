@@ -54,7 +54,7 @@
   - Extension UI 프레임워크: Solid (잠정)
   - 스텝 완료 정의 = DoD 충족 + history.md 항목 + (릴리스 시) README 버전 히스토리
 - **산출물**: `extension/DEV_PLAN.md`, `history.md`, `README.md`, `protocol/README.md`, `protocol/VERSION`, `desktop/README.md`, `bridge/README.md`, `CLAUDE.md` 갱신
-- **커밋**: 미커밋 (사용자 지시 대기)
+- **커밋**: `420f0de` (태그 `v0.2.0`, #05~#07 일괄)
 
 ## #06 · 2026-09-11 · 정리 모델 확정: "창 하나 = 주제 하나" (기능정의서 v0.2, 계획서 v0.2)
 
@@ -69,7 +69,7 @@
   - Tab Group은 보조 구조, EXT가 강제 생성하지 않음
   - 규칙은 행동 학습 후 1회 제안, 사용자 직접 이동이 항상 우선
 - **산출물**: `docs/functional_spec.md` v0.2, `extension/DEV_PLAN.md` v0.2, `README.md`·`CLAUDE.md` 갱신
-- **커밋**: 미커밋 (사용자 지시 대기)
+- **커밋**: `420f0de` (태그 `v0.2.0`, #05~#07 일괄)
 
 ## #07 · 2026-09-11 · E01 WXT 프로젝트 스캐폴딩
 
@@ -85,4 +85,12 @@
   - `#imports`로 WXT 자동 import 사용
 - **산출물**: `extension/` 프로젝트 일체, `extension/README.md`(명령어 표)
 - **미검증**: `pnpm dev`로 실제 Chrome에 로드하여 팝업이 뜨는지는 사용자 확인 필요 (`.output/chrome-mv3/` 수동 로드 가능)
-- **커밋**: 미커밋 (사용자 지시 대기)
+- **커밋**: `420f0de` (태그 `v0.2.0`, #05~#07 일괄)
+
+## #08 · 2026-09-11 · v0.2.0 커밋
+
+- **요청**: "카밋"
+- **수행**: #05~#07 작업분(문서 v0.2, 격리 구조, E00~E01)을 단일 커밋 `420f0de`로 커밋하고 annotated 태그 `v0.2.0` 생성. `.gitattributes`(LF 고정) 추가. README/history/계획서의 "(미커밋)" 표기를 커밋 해시로 갱신하는 후속 커밋 1건
+- **결정**: 루트 태그 `v0.2.0`은 문서 마일스톤(기능정의서 v0.2). Extension 자체 태그 `ext-v0.1.0`은 EM1(E03) 완료 시 부여
+- **산출물**: 커밋 `420f0de`, 태그 `v0.2.0`
+- **푸시**: 미푸시 (사용자 지시 대기)
