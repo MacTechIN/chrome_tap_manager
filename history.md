@@ -94,3 +94,68 @@
 - **결정**: 루트 태그 `v0.2.0`은 문서 마일스톤(기능정의서 v0.2). Extension 자체 태그 `ext-v0.1.0`은 EM1(E03) 완료 시 부여
 - **산출물**: 커밋 `420f0de`, 태그 `v0.2.0`
 - **푸시**: 미푸시 (사용자 지시 대기)
+
+## #09 · 2026-09-11 · v0.2.0 푸시 · 테스트 재확인
+
+- **요청**: "푸쉬", "테스트 ?"
+- **수행**: `git push origin main` (`2f2db03..9688761`), `git push origin v0.2.0`. 푸시 후 `pnpm test` 재실행 → 3/3 통과
+- **테스트 현황**: 자동 테스트는 `tests/summary.test.ts` 3건(순수 함수 2, fake-browser storage 1). Chrome 실기기 로드(팝업 표시)는 사용자 수동 검증 항목으로 남음
+- **산출물**: 원격 `main` = `9688761`, 태그 `v0.2.0`
+
+## #10 · 2026-09-11 · E02 도메인 모델 + 저장소 레이어
+
+- **요청**: "다음" (E02 진행)
+- **수행**:
+  - `src/core/model.ts`: `Topic`(status open/saved, windowId, isNamed, color), `Tab`(topicId 필수, fingerprint, chromeTabId, subgroupId), `Subgroup`, `Rule`(kind/source/enabled/undoCount), `MoveLogEntry`, `Store`, `SCHEMA_VERSION=1`, `MOVE_LOG_LIMIT=100`, `topicNameKey()`
+  - `src/core/fingerprint.ts`: `normalizeUrl`(NFC, hash 제거, 기본 포트 제거, 루트 제외 trailing slash 제거), `normalizeTitle`(NFC, 공백 압축), `fingerprint()` = FNV-1a 64bit hex
+  - `src/core/invariants.ts`: `checkInvariants()` 15종 위반 코드 (open Topic↔창 1:1, saved에 windowId 없음, named 이름 중복 금지, 탭 orphan/chromeTabId 정합, subgroup·rule orphan), `assertInvariants()`
+  - `src/core/repo.ts`: `KeyValueStore` 인터페이스 + `MemoryKV`; `Repo`(init/마이그레이션 훅/snapshot/replaceAll/clear, Topic·Tab·Subgroup·Rule·MoveLog CRUD, `findTopicByWindow`, `findTabByChromeId`, deleteTopic cascade, deleteSubgroup 시 탭 detach, moveLog 100건 캡). 컬렉션별 키(`ctm:topics` 등)로 부분 쓰기
+  - `src/chrome/storageKv.ts`: `chrome.storage.local/session` 어댑터 (`#imports` browser)
+  - 테스트 3파일 49건 추가 (fingerprint 11, invariants 10, repo 14×2 백엔드). 총 52/52 통과. typecheck·lint·build 통과
+  - 수정: `chrome://extensions/`는 유효 URL이라 루트 슬래시 유지(테스트 기대값 수정), 테스트 탭 chromeTabId 중복 제거, repo.ts 콤마 표현식을 if 블록으로(ESLint no-unused-expressions)
+- **결정**:
+  - fingerprint는 계획서의 sha1 대신 **동기 FNV-1a 64bit** (E03 리듀서를 동기로 유지하기 위함, 충돌 위험 무시 가능)
+  - 저장 구조: 컬렉션당 1키, 메모리 캐시 + write-through. 하나의 `Repo` 클래스에 두 백엔드(Memory / chrome.storage) 주입
+  - `deleteTopic`은 tabs/subgroups/rules/moveLog로 cascade (saved Topic 삭제 시 저장 탭 목록 함께 삭제, 기능정의서 F-01)
+  - `now`/`newId`를 주입 가능하게 하여 서비스 레이어(E04) 테스트 결정성 확보
+- **산출물**: 위 소스 5개 + 테스트 3개
+- **커밋**: 미커밋 (사용자 지시 대기)
+
+## #11 · 2026-09-12 · Windows Chrome 실기기 로드 확인 (E01 미검증 항목 해소)
+
+- **요청**: Windows에 설치·테스트 방법 안내 → "윈도우 상황 확인" → "로드했어 지금 상황 알려줘" → 포트 3000 서버 강제 종료 → 스크린샷으로 로드 결과 공유
+- **수행**:
+  - 환경 점검: Chrome 152.0.7977.84 (Program Files), 프로필 Default/Profile 1/Profile 2. "조직에서 관리하는 브라우저" 표시는 레지스트리 정책 `LocalNetworkAccessAllowedForUrls`(SharePoint) 때문이며 확장 차단 정책 없음 확인 (레지스트리 + Profile 2 클라우드 정책 캐시)
+  - `pnpm dev`가 2회 실행되어 포트 3000(22:55)·3001(00:24) 서버가 중복 → 사용자 요청으로 3000(PID 41628) 강제 종료. WXT 0.21은 브라우저 자동 실행 없이 "Load .output\chrome-mv3-dev manually" 안내만 함 (정상)
+  - 1차 로드 시도는 카드 미표시(폴더 선택 오류 추정) → 정확한 폴더 경로 안내 후 재로드 성공
+  - 교차 검증: 확장 ID `ijpicpomjkilcfefmafppjlaphagmhbf`가 Default 프로필 Preferences/Secure Preferences에 기록, Chrome 프로세스가 dev 서버 :3001에 Established 연결, 서비스 워커 활성, 오류 버튼 없음
+- **결정**: 개발 중 로드 폴더는 `.output/chrome-mv3-dev` (dev 서버 필요, Alt+R 리로드). 서버 종료 시에는 `pnpm build` 후 `.output/chrome-mv3`
+- **산출물**: E01 완료 기준의 미검증 항목("Chrome에 로드되고 팝업이 뜬다") 해소. 계획서 체크리스트 갱신
+- **커밋**: 미커밋
+
+## #12 · 2026-09-12 · E03 창·탭 이벤트 수집기
+
+- **요청**: "창 정리는 어떻게 해?" (현재 미구현·향후 UX 설명) → "다음" (E03 진행)
+- **수행**:
+  - `src/core/liveState.ts`: `LiveState{seq, windows, tabs, focusedWindowId}`와 11종 `LiveEvent`(init, window.created/removed/focused, tab.created/updated/removed/moved/attached/detached/activated)를 처리하는 순수 리듀서 `reduce()`. 모든 이벤트에서 `seq` 증가(무시된 이벤트 포함), 창 내 탭 순서·index 재번호, 미추적 창 이벤트 무시, 이전 상태 불변. 셀렉터 `windowList/tabsOf/activeTabOf/counts`
+  - `src/core/liveTracker.ts`: `LiveTracker` — 동기 구독 → `storage.session`에서 `seq` 복원 → 스냅샷(`windows.getAll`)으로 재구성 → 로딩 중 도착한 이벤트 큐 재생, 250ms 디바운스 저장, `onChange` 리스너, `resync()`, `flush()`, `stop()`
+  - `src/chrome/events.ts`: Chrome 이벤트 → LiveEvent 정규화 어댑터(`subscribeChromeEvents`, `loadInitialState`, `toLiveTab`), type≠normal 창 필터, groupId -1 → undefined, WINDOW_ID_NONE → undefined
+  - `src/core/messages.ts` + `background.ts`: `live.get`/`live.resync` 런타임 메시지. 팝업(`App.tsx`)이 창 목록·탭 수·seq·SW 시작 시각 표시
+  - `core/summary.ts`와 그 테스트(E01 예시) 제거
+  - 테스트 37건 추가(liveState 19, liveTracker 8, chrome/events 10) → 총 86/86. typecheck·lint·build 통과. 성능 테스트: 창 20/탭 200 init < 100ms
+  - 문제 해결: fake-browser 2.0.1이 `tabs.onMoved/onAttached/onDetached` 미구현 → 테스트에서 stub 이벤트 주입; fake-browser 창에 `type` 없음 → `isNormalWindow`가 undefined를 normal로 간주; 트래커 테스트가 `kv.get` 틱 이전에 스냅샷 release 시도 → 틱 대기 추가
+- **결정**:
+  - `seq`는 무시된 이벤트에서도 증가 (커서 단조성 우선, E10 델타 정렬용)
+  - SW 기동 시 세션 저장값은 `seq`만 신뢰하고 상태는 항상 `windows.getAll`로 재구성 (SW 사망 중 놓친 이벤트 대비)
+  - detach 시 탭은 `tabs`에 남기고 창 목록에서만 제거, attach에서 windowId 갱신 (Chrome 이벤트 순서 detached→attached→(old window) removed 대응)
+- **산출물**: 위 소스 5개(신규 4, 수정 background/App/style), 테스트 3개
+- **미검증**: 실기기에서 SW 강제 종료 후 30초 내 상태 재구성과 seq 연속성은 사용자 수동 확인 대기 (팝업의 seq가 리로드 후에도 증가만 하는지)
+- **커밋**: 미커밋. EM1(E00~E03) 완료이므로 커밋 시 `ext-v0.1.0` 태그 부여 예정
+
+## #13 · 2026-09-12 · E03 실기기 확인 (팝업 라이브 상태)
+
+- **요청**: "Alt+R 해도 반응 없음" → 단축키 역할 설명 → "아이콘 클릭하면 팝업 뜬다 seq 보임" + 스크린샷
+- **확인**: 팝업에 일반 창 3개 · 탭 48개 · seq 6 · 창별 탭 수/활성 탭 제목 · SW 시작 시각 표시. E03 실기기 동작 확인
+- **발견**: `Alt+R`(확장 리로드) 후 seq가 작은 값으로 시작 — Chrome이 확장 리로드/업데이트/브라우저 재시작 시 `storage.session`을 비우기 때문. seq 연속성은 SW 유휴 종료→재기동 경우에만 보장됨. 설계상 허용 (E10 Bridge는 재연결 시 전체 재동기화)
+- **안내 수정**: `Alt+R`은 리로드 전용, 팝업은 툴바 아이콘 클릭 또는 `Ctrl+Shift+Space`
+- **커밋**: 미커밋

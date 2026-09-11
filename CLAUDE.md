@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-Planning documents are done. The Chrome Extension is being implemented step by step (`extension/DEV_PLAN.md`; E01 scaffold done, next E02). `desktop/` and `bridge/` have no code yet. Remote: https://github.com/MacTechIN/chrome_tap_manager.git.
+Planning documents are done. The Chrome Extension is being implemented step by step (`extension/DEV_PLAN.md`; E00–E03 done, next E04 "Topic = window model"). `desktop/` and `bridge/` have no code yet. Remote: https://github.com/MacTechIN/chrome_tap_manager.git.
 
 ## Commands — extension/ (run inside `extension/`)
 
@@ -21,9 +21,13 @@ pnpm format
 pnpm zip          # store zip
 ```
 
-Run a single test file: `pnpm vitest run tests/summary.test.ts`. Filter by name: `pnpm vitest run -t "counts windows"`.
+Run a single test file: `pnpm vitest run tests/core/repo.test.ts`. Filter by name: `pnpm vitest run -t "cascades"`.
 
 Notes: WXT 0.21 exports the test helpers as `wxt/testing/vitest-plugin` and `wxt/testing/fake-browser` (not `wxt/testing`). Import `browser`, `defineBackground` etc. from `#imports`. `src/core/` must never touch Chrome APIs. Versions are pinned exactly in `package.json`; TypeScript stays on 5.9.x.
+
+Extension code layout (as built so far): `src/core/model.ts` (domain types), `fingerprint.ts` (URL/title normalize + FNV-1a id), `invariants.ts` (window=topic invariant checker), `repo.ts` (`Repo` over a `KeyValueStore`; `MemoryKV` for tests), `liveState.ts` (pure reducer mirroring open windows/tabs with a monotonic `seq`), `liveTracker.ts` (owns LiveState in the SW: restores `seq` from `storage.session`, rebuilds from `windows.getAll`, queues events during startup), `messages.ts` (runtime message types). `src/chrome/storageKv.ts` and `src/chrome/events.ts` are the only Chrome adapters. Test gotchas: `@webext-core/fake-browser` 2.0.1 lacks `tabs.onMoved/onAttached/onDetached` (tests install stubs) and its windows have no `type` (adapter treats missing type as normal).
+
+Manual check in Chrome: with `pnpm dev` running, load `.output/chrome-mv3-dev` unpacked; `Alt+R` reloads after a rebuild. The popup shows live window/tab counts and `seq`.
 
 When code is added to `desktop/` or `bridge/`, add that app's actual commands here.
 

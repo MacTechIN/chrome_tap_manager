@@ -35,7 +35,7 @@
 |---|---|---|
 | 기획 문서 (정의서 / 리서치 / 기능정의서) | ✅ 완료 | 기능정의서 v0.2 — "창 = 주제" 모델 확정 |
 | Extension 개발 계획서 | ✅ 완료 | `extension/DEV_PLAN.md` v0.2 |
-| Extension 구현 | 🟡 E01 완료, E02 대기 | EM1 기반 단계 (`extension/` 빌드·테스트·lint 통과) |
+| Extension 구현 | 🟡 E03 완료, E04 대기 | EM1 기반 단계 완료 (테스트 86건 통과). `ext-v0.1.0` 태그는 커밋 시 부여 |
 | Desktop 앱 | ⬜ 미착수 | Extension EM5 이후 |
 | Bridge 호스트 | ⬜ 미착수 | `protocol/` v0.1 이후 |
 | Protocol 스키마 | ⬜ 미작성 | Extension E10에서 v0.1 |
@@ -46,8 +46,8 @@
 |---|---|---|---|
 | E00 | 저장소 골격 및 격리 구조 | ✅ 완료 | 2026-09-11 |
 | E01 | WXT 스캐폴딩 | ✅ 완료 | 2026-09-11 |
-| E02 | 도메인 모델 + 저장소 레이어 | ⬜ | |
-| E03 | 창·탭 이벤트 수집기 | ⬜ | |
+| E02 | 도메인 모델 + 저장소 레이어 | ✅ 완료 | 2026-09-11 |
+| E03 | 창·탭 이벤트 수집기 | ✅ 완료 | 2026-09-12 |
 | E04 | Topic = 창 모델 | ⬜ | |
 | E05 | 검색 엔진 코어 + 커맨드 파서 | ⬜ | |
 | E06 | Popup 검색창 + 정리 커맨드 + IME | ⬜ | |
@@ -64,6 +64,8 @@
 
 | 날짜 | 버전 / 태그 | 커밋 | 내용 |
 |---|---|---|---|
+| 2026-09-12 | (미커밋) | — | E03 창·탭 이벤트 수집기 (`core/liveState.ts` 리듀서, `core/liveTracker.ts`, `chrome/events.ts`, 팝업에 라이브 상태·seq 표시, 테스트 37건 추가 → 86건) |
+| 2026-09-11 | (미커밋) | — | E02 도메인 모델 + 저장소 레이어 (`core/model.ts`, `fingerprint.ts`, `invariants.ts`, `repo.ts`, `chrome/storageKv.ts`, 테스트 49건 추가) |
 | 2026-09-11 | `v0.2.0` | `420f0de` | 정리 모델 "창 = 주제" 확정(기능정의서 v0.2), Extension 개발 계획서 v0.2, 앱 격리 폴더 구조(`extension/` `desktop/` `bridge/` `protocol/`), `history.md`/`README.md` 신설, E00 완료, E01 WXT 스캐폴딩(`extension/` 프로젝트, 빌드·테스트·lint 통과) |
 | 2026-09-11 | `v0.1.0` | `2f2db03` | 프로젝트 정의서, 기술 리서치(`docs/research.md`), 기능정의서(`docs/functional_spec.md`), CLAUDE.md |
 
