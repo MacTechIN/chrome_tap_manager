@@ -17,6 +17,8 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "es-hangul": "2.4.0",
+    "minisearch": "7.2.0",
     "solid-js": "1.9.15"
   },
   "devDependencies": {

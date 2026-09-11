@@ -8,53 +8,134 @@
     'Malgun Gothic',
     sans-serif;
   font-size: 14px;
+  --line: color-mix(in srgb, currentColor 14%, transparent);
+  --sel: color-mix(in srgb, currentColor 10%, transparent);
+  --muted: color-mix(in srgb, currentColor 60%, transparent);
 }
 
 body {
   margin: 0;
-  min-width: 340px;
+  width: 420px;
 }
 
 .popup {
-  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 10px 8px;
 }
 
-h1 {
-  font-size: 16px;
-  margin: 0 0 4px;
+.query {
+  font: inherit;
+  font-size: 15px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  outline: none;
 }
 
-.muted {
-  opacity: 0.6;
-  margin: 0 0 12px;
+.query:focus {
+  border-color: color-mix(in srgb, currentColor 40%, transparent);
 }
 
-.small {
-  font-size: 12px;
-  margin-top: 12px;
-}
-
-.windows {
+.rows {
   list-style: none;
   margin: 8px 0 0;
   padding: 0;
-  max-height: 260px;
+  max-height: 380px;
   overflow-y: auto;
 }
 
-.windows li {
-  padding: 4px 6px;
-  border-radius: 4px;
+.rows li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: default;
+}
+
+.rows li.selected {
+  background: var(--sel);
+}
+
+.rows li.empty {
+  color: var(--muted);
+  justify-content: center;
+}
+
+.icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.icon.topic {
+  color: #4a8df8;
+}
+
+.icon.cmd {
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.icon img {
+  display: block;
+}
+
+.fav-fallback {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: var(--line);
+  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.windows li.focused {
-  background: color-mix(in srgb, currentColor 10%, transparent);
+.title.unnamed {
+  font-style: italic;
+  opacity: 0.8;
 }
 
-.wid {
-  font-family: ui-monospace, Consolas, monospace;
-  opacity: 0.7;
+.meta {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notice {
+  margin: 8px 2px 0;
+  font-size: 12px;
+}
+
+.notice.error {
+  color: #d33;
+}
+
+.hint {
+  margin: 8px 2px 0;
+  font-size: 11px;
+  color: var(--muted);
 }

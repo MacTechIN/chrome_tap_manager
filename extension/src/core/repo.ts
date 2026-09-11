@@ -69,6 +69,8 @@ export interface TabFilter {
 export class Repo {
   private cache: Store = emptyStore();
   private ready = false;
+  private batchDepth = 0;
+  private dirty = new Set<CollectionName>();
   readonly now: () => number;
   readonly newId: () => string;
 
@@ -127,7 +129,29 @@ export class Repo {
   }
 
   private async flush(c: CollectionName): Promise<void> {
+    if (this.batchDepth > 0) {
+      this.dirty.add(c);
+      return;
+    }
     await this.kv.set(collectionKey(c), this.cache[c]);
+  }
+
+  /**
+   * Runs `fn` with persistence deferred: every touched collection is written
+   * once when the outermost batch completes. Nested batches are flattened.
+   */
+  async batch<T>(fn: () => Promise<T> | T): Promise<T> {
+    this.batchDepth++;
+    try {
+      return await fn();
+    } finally {
+      this.batchDepth--;
+      if (this.batchDepth === 0 && this.dirty.size > 0) {
+        const touched = [...this.dirty];
+        this.dirty.clear();
+        for (const c of touched) await this.kv.set(collectionKey(c), this.cache[c]);
+      }
+    }
   }
 
   /** Snapshot copy of the whole store (for search indexing, export, sync). */

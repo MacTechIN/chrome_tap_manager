@@ -27,7 +27,7 @@
 
 ## 진행 현황
 
-최종 갱신: 2026-09-11
+최종 갱신: 2026-09-12
 
 ### 전체
 
@@ -35,7 +35,7 @@
 |---|---|---|
 | 기획 문서 (정의서 / 리서치 / 기능정의서) | ✅ 완료 | 기능정의서 v0.2 — "창 = 주제" 모델 확정 |
 | Extension 개발 계획서 | ✅ 완료 | `extension/DEV_PLAN.md` v0.2 |
-| Extension 구현 | 🟡 E03 완료, E04 대기 | EM1 기반 단계 완료 (테스트 86건 통과). `ext-v0.1.0` 태그는 커밋 시 부여 |
+| Extension 구현 | 🟡 E06 완료, E07 대기 | EM1 `ext-v0.1.0`. E04~E06 완료·미커밋 (테스트 174건). 팝업에서 `>move`/`>new`/`>rename`/`>open`/`>merge` 동작 |
 | Desktop 앱 | ⬜ 미착수 | Extension EM5 이후 |
 | Bridge 호스트 | ⬜ 미착수 | `protocol/` v0.1 이후 |
 | Protocol 스키마 | ⬜ 미작성 | Extension E10에서 v0.1 |
@@ -48,9 +48,9 @@
 | E01 | WXT 스캐폴딩 | ✅ 완료 | 2026-09-11 |
 | E02 | 도메인 모델 + 저장소 레이어 | ✅ 완료 | 2026-09-11 |
 | E03 | 창·탭 이벤트 수집기 | ✅ 완료 | 2026-09-12 |
-| E04 | Topic = 창 모델 | ⬜ | |
-| E05 | 검색 엔진 코어 + 커맨드 파서 | ⬜ | |
-| E06 | Popup 검색창 + 정리 커맨드 + IME | ⬜ | |
+| E04 | Topic = 창 모델 | ✅ 완료 | 2026-09-12 |
+| E05 | 검색 엔진 코어 + 커맨드 파서 | ✅ 완료 | 2026-09-12 |
+| E06 | Popup 검색창 + 정리 커맨드 + IME | ✅ 완료 | 2026-09-12 |
 | E07 | Omnibox | ⬜ | |
 | E08 | Side Panel 개요 + 하위 그룹 (보조) | ⬜ | |
 | E09 | 규칙: 행동 학습 제안 + 수동 규칙 | ⬜ | |
@@ -64,8 +64,11 @@
 
 | 날짜 | 버전 / 태그 | 커밋 | 내용 |
 |---|---|---|---|
-| 2026-09-12 | (미커밋) | — | E03 창·탭 이벤트 수집기 (`core/liveState.ts` 리듀서, `core/liveTracker.ts`, `chrome/events.ts`, 팝업에 라이브 상태·seq 표시, 테스트 37건 추가 → 86건) |
-| 2026-09-11 | (미커밋) | — | E02 도메인 모델 + 저장소 레이어 (`core/model.ts`, `fingerprint.ts`, `invariants.ts`, `repo.ts`, `chrome/storageKv.ts`, 테스트 49건 추가) |
+| 2026-09-12 | (미커밋) | — | E06 Popup 검색창 + 정리 커맨드: `core/commandRunner.ts`(focus/restore/move/new/rename/merge), `core/searchDocs.ts`, `core/ime.ts`, `chrome/actions.ts`, `TopicService.adoptWindow`, 백그라운드 검색 인덱스·컨텍스트 메뉴·단축키(Ctrl+Shift+M), Solid 팝업(검색·자동완성·키보드·IME 가드). 테스트 21건 추가 → 174건 |
+| 2026-09-12 | (미커밋) | — | E05 검색 엔진 코어 + 커맨드 파서: `core/search/{hangul,fuzzy,index}.ts`(MiniSearch 3중 필드 + fzf형 부분열 매칭, 랭킹 부스트), `core/command.ts`(`#`/`@saved`/`>` 문법, 7개 커맨드, 한글 인식 주제 자동완성). 테스트 39건 추가 → 153건, 1,100문서 쿼리 평균 1.3 ms |
+| 2026-09-12 | (미커밋) | — | E04 Topic = 창 모델: `core/topicService.ts`(창 생성→Topic, 창 닫힘→saved, 탭 행 동기화, rename/deleteSaved), `core/autoName.ts`, `Repo.batch()`, 세션 마커로 stale windowId 무효화, 팝업에 주제 목록·인라인 이름 변경. 테스트 28건 추가 → 114건 |
+| 2026-09-12 | `ext-v0.1.0` | `de8396b` | **EM1 기반 완료.** E03 창·탭 이벤트 수집기 (`core/liveState.ts` 리듀서, `core/liveTracker.ts`, `chrome/events.ts`, 팝업에 라이브 상태·seq 표시, 테스트 37건 추가 → 86건) |
+| 2026-09-11 | (ext-v0.1.0에 포함) | `de8396b` | E02 도메인 모델 + 저장소 레이어 (`core/model.ts`, `fingerprint.ts`, `invariants.ts`, `repo.ts`, `chrome/storageKv.ts`, 테스트 49건 추가) |
 | 2026-09-11 | `v0.2.0` | `420f0de` | 정리 모델 "창 = 주제" 확정(기능정의서 v0.2), Extension 개발 계획서 v0.2, 앱 격리 폴더 구조(`extension/` `desktop/` `bridge/` `protocol/`), `history.md`/`README.md` 신설, E00 완료, E01 WXT 스캐폴딩(`extension/` 프로젝트, 빌드·테스트·lint 통과) |
 | 2026-09-11 | `v0.1.0` | `2f2db03` | 프로젝트 정의서, 기술 리서치(`docs/research.md`), 기능정의서(`docs/functional_spec.md`), CLAUDE.md |
 

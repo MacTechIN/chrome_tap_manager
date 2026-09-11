@@ -14,6 +14,10 @@ export default defineConfig({
         suggested_key: { default: 'Ctrl+Shift+Space', mac: 'Alt+Space' },
         description: '검색창 열기',
       },
+      'send-to-last-topic': {
+        suggested_key: { default: 'Ctrl+Shift+M', mac: 'Command+Shift+M' },
+        description: '현재 탭을 마지막 사용 주제로 보내기',
+      },
     },
   },
 });

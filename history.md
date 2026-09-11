@@ -119,7 +119,7 @@
   - `deleteTopic`은 tabs/subgroups/rules/moveLog로 cascade (saved Topic 삭제 시 저장 탭 목록 함께 삭제, 기능정의서 F-01)
   - `now`/`newId`를 주입 가능하게 하여 서비스 레이어(E04) 테스트 결정성 확보
 - **산출물**: 위 소스 5개 + 테스트 3개
-- **커밋**: 미커밋 (사용자 지시 대기)
+- **커밋**: `de8396b` (태그 `ext-v0.1.0`, #10~#13 일괄)
 
 ## #11 · 2026-09-12 · Windows Chrome 실기기 로드 확인 (E01 미검증 항목 해소)
 
@@ -131,7 +131,7 @@
   - 교차 검증: 확장 ID `ijpicpomjkilcfefmafppjlaphagmhbf`가 Default 프로필 Preferences/Secure Preferences에 기록, Chrome 프로세스가 dev 서버 :3001에 Established 연결, 서비스 워커 활성, 오류 버튼 없음
 - **결정**: 개발 중 로드 폴더는 `.output/chrome-mv3-dev` (dev 서버 필요, Alt+R 리로드). 서버 종료 시에는 `pnpm build` 후 `.output/chrome-mv3`
 - **산출물**: E01 완료 기준의 미검증 항목("Chrome에 로드되고 팝업이 뜬다") 해소. 계획서 체크리스트 갱신
-- **커밋**: 미커밋
+- **커밋**: `de8396b` (태그 `ext-v0.1.0`, #10~#13 일괄)
 
 ## #12 · 2026-09-12 · E03 창·탭 이벤트 수집기
 
@@ -150,7 +150,7 @@
   - detach 시 탭은 `tabs`에 남기고 창 목록에서만 제거, attach에서 windowId 갱신 (Chrome 이벤트 순서 detached→attached→(old window) removed 대응)
 - **산출물**: 위 소스 5개(신규 4, 수정 background/App/style), 테스트 3개
 - **미검증**: 실기기에서 SW 강제 종료 후 30초 내 상태 재구성과 seq 연속성은 사용자 수동 확인 대기 (팝업의 seq가 리로드 후에도 증가만 하는지)
-- **커밋**: 미커밋. EM1(E00~E03) 완료이므로 커밋 시 `ext-v0.1.0` 태그 부여 예정
+- **커밋**: `de8396b` (태그 `ext-v0.1.0`, #10~#13 일괄)
 
 ## #13 · 2026-09-12 · E03 실기기 확인 (팝업 라이브 상태)
 
@@ -158,4 +158,64 @@
 - **확인**: 팝업에 일반 창 3개 · 탭 48개 · seq 6 · 창별 탭 수/활성 탭 제목 · SW 시작 시각 표시. E03 실기기 동작 확인
 - **발견**: `Alt+R`(확장 리로드) 후 seq가 작은 값으로 시작 — Chrome이 확장 리로드/업데이트/브라우저 재시작 시 `storage.session`을 비우기 때문. seq 연속성은 SW 유휴 종료→재기동 경우에만 보장됨. 설계상 허용 (E10 Bridge는 재연결 시 전체 재동기화)
 - **안내 수정**: `Alt+R`은 리로드 전용, 팝업은 툴바 아이콘 클릭 또는 `Ctrl+Shift+Space`
-- **커밋**: 미커밋
+- **커밋**: `de8396b` (태그 `ext-v0.1.0`, #10~#13 일괄)
+
+## #14 · 2026-09-12 · E04 Topic = 창 모델 (F-01, F-04)
+
+- **요청**: "커밋"(ext-v0.1.0) → "다음" (E04 진행)
+- **수행**:
+  - `src/core/autoName.ts`: `siteName`(www 제거 host, 비http는 `scheme://host`), `nameFromTabs`(1개→사이트, 여러 개→최다 host, 없으면 첫 제목), `nextUnnamed`("새 주제 N"), `autoName`
+  - `src/core/topicService.ts`: LiveEvent+LiveState를 받아 Repo를 갱신. window.created→Topic(open, 임시 이름), window.removed→saved(탭 목록 보존; 이름 미지정+탭 0개면 삭제), tab.created/updated/removed/moved/attached/activated→Tab 행(topicId, fingerprint, index, lastActiveAt), window.focused→직전 창의 임시 이름 재계산. `reconcile()`(init/resync), `rename()`(1~50자, NFC, 이름 지정 Topic 간 대소문자 무시 중복 금지), `deleteSaved()`, `listTopics()`(open 최근순→saved). `TopicError` 코드 5종
+  - `Repo.batch()`: 이벤트 1건당 컬렉션별 쓰기 1회로 합침
+  - `background.ts`: Repo(local) + 세션 마커(`ctm:session`, storage.session) → `freshSession` 판정 → TopicService. Chrome 리스너는 SW 첫 턴에 동기 등록, 서비스 준비 전 이벤트는 버퍼 후 순서대로 적용. 메시지 `topics.list`/`topic.rename`/`topic.deleteSaved` 추가
+  - 팝업: 열린 주제(현재 창 강조)/저장된 주제 목록, 이름 클릭 → 인라인 변경(IME Enter 가드, Esc 취소), 오류 표시
+  - 테스트 28건 추가(autoName 8, topicService 20 — init/reconcile 3, 창 생명주기 5, 탭 생명주기 7, rename/delete/list 4, 200이벤트 랜덤 churn 불변 조건 1) → 총 114/114. typecheck·lint·build 통과
+  - 수정: 테스트 seed 콜백이 이전 harness를 참조하던 버그
+- **결정**:
+  - 계획서의 `chrome/windowMap.ts`(storage.session 매핑) 대신 **Topic.windowId(storage.local) + 세션 마커**로 대체. 마커가 없으면(Chrome 재시작·확장 리로드) 저장된 open Topic을 전부 saved로 전환 — Chrome이 세션마다 windowId를 재사용하므로 오매칭 방지. 스마트 재매칭은 E11
+  - `tab.removed(isWindowClosing=true)`는 행을 지우지 않고 닫힘 표시만 → 이어지는 `window.removed`에서 saved 목록 보존
+  - 임시 이름 갱신 시점: 탭 1개 이하일 때 즉시, 그 외에는 창 포커스 이탈 시 (깜빡임 방지)
+  - 사용자가 직접 닫은 탭(`isWindowClosing=false`)은 행 삭제 (저장 탭 보존 옵션은 E11)
+- **산출물**: 소스 신규 2(autoName, topicService), 수정 5(repo, messages, background, App, style), 테스트 2
+- **미검증**: 실기기에서 F-01/F-04 시나리오(창 열기→주제 생성, 이름 변경, 창 닫기→저장된 주제) 사용자 확인 대기
+- **커밋**: 미커밋. EM2 완료이므로 커밋 시 `ext-v0.2.0` 태그 예정
+
+## #15 · 2026-09-12 · E05 검색 엔진 코어 + 커맨드 파서 (F-07 EXT측)
+
+- **요청**: "다음" (E05 진행)
+- **수행**:
+  - 의존성 추가: `minisearch` 7.2.0, `es-hangul` 2.4.0 (고정 버전)
+  - `src/core/search/hangul.ts`: `normalizeText`(NFC·소문자·공백 압축), `tokenize`(공백·구두점·기호 분리, 모든 문자 체계의 글자 유지), 토큰 단위 `tokenToJamo`/`tokenToChoseong`(es-hangul `getChoseong`이 비한글을 버리므로 문자별 처리), `variants()` → raw/jamo/cho 3중 문자열, `isChoseongQuery`, `queryToJamo`
+  - `src/core/search/fuzzy.ts`: fzf형 부분열 점수(`subsequenceScore`: 접두·단어 시작·연속 보너스, 간격 감점), `prepareQuery`(검색당 1회) + `matchPrepared`(색인 시 압축된 변형 대상), `matchVariants` 편의 함수
+  - `src/core/search/index.ts`: `SearchIndex` — Topic/Tab 문서 2종, MiniSearch 필드 12개(raw/jamo/cho × name/title/topic + host/path/desc), 검색 = raw 토큰(prefix + 4자 이상 오타 허용 0.2) ∪ 초성 필드 ∪ 자모 필드 ∪ 퍼지 패스(name/host), 부스트(주제 이름 정확 일치 +100, 주제 종류 +0.3, open +0.2, 현재 창 +0.5, 최근성 +0.5/(1+시간)), 범위 all/saved/topic, 빈 쿼리는 최근순, `upsert/remove/replaceAll`, `splitUrl`
+  - `src/core/command.ts`: `parseInput`(`#topic text` / `@saved text` / `>cmd arg` / 검색), 커맨드 7종 메타(`COMMAND_INFO`: 인자 종류·설명·usage), `matchCommands`(접두), `suggestCommands`(`>` 전체, `>mo` 축약, `>move 프` → 주제 자동완성(한글 인식), open은 saved만, move/merge는 현재 주제 제외, close는 현재 창 우선), `rankTopics`, `findTopicByName`
+  - 테스트 39건 추가(hangul 7, fuzzy 7, index 13(벤치 포함), command 12) → 총 153/153. typecheck·lint·build 통과
+  - 성능: 1,100문서(탭 1,000 + 주제 100) 색인 83 ms, 쿼리 평균 **1.34 ms** (목표 10 ms). 최초 구현 19 ms → 쿼리 준비 1회화 + 대상 사전 압축 + 탭의 topicName 퍼지 제외로 개선
+  - 수정: 오타 허용 테스트 데이터 오류(한글 제목에 영어 오타 기대) → 영어 토큰 케이스로 교체; 미사용 import 제거
+- **결정**:
+  - 하이브리드 검색: MiniSearch(토큰 prefix·오타) + 부분열 매처(약어 "gh"→github.com, 자모/초성). 데스크톱(nucleo)과 동작을 맞추기 쉬운 구조
+  - 초성/자모 변환은 토큰 단위로 한글 토큰에만 적용 → "리액트 hooks" 같은 혼용 쿼리 지원
+  - 커맨드는 첫 토큰이 유일한 접두 일치이고 공백이 따라올 때만 확정(`>mo 프` → move, `>m x`는 미확정)
+- **산출물**: 소스 4개, 테스트 4개
+- **커밋**: 미커밋 (E04와 함께 커밋 예정. EM2 완료 태그 `ext-v0.2.0`은 E04 기준)
+
+## #16 · 2026-09-12 · E06 Popup 검색창 + 정리 커맨드 + IME (F-02, F-08, F-11 Popup)
+
+- **요청**: "다음" (E06 진행)
+- **수행**:
+  - `src/core/commandRunner.ts`: `CommandRunner` — `focus(target, mode)`(탭 활성화+창 포커스 / 창만; saved 주제·탭은 `restoreTopic`으로 복원 후 URL 매칭 활성화), `restoreTopic`(저장 탭 URL로 `windows.create` → `waitForWindow` → `adoptWindow`), `move`(saved면 복원, 이미 대상 창에 있는 탭 제외, moveLog 기록, `lastMoveTopicId`, `switchTo`), `newTopic`(`windows.create({tabId})` + 나머지 이동 + 이름 지정), `rename`(topicId 또는 windowId), `merge`
+  - `TopicService.adoptWindow(topicId, windowId)`: saved 주제를 새 창에 재연결. 창 이벤트가 먼저 도착해 자동 생성된 주제가 있으면 탭 행을 이관하고 병합, saved 행은 삭제(라이브 이벤트가 재생성)
+  - `src/chrome/actions.ts`: `ChromeActions` 어댑터(`tabs.update/move`, `windows.update({focused, drawAttention})`, `windows.create`, `tabs.query`)
+  - `src/core/searchDocs.ts`(Repo 스냅샷 → SearchDoc[]), `src/core/ime.ts`(`isCommitEnter`, `enterVariant`)
+  - `background.ts`: SearchIndex를 SW에서 소유(이벤트 후 dirty → 다음 검색 시 재구축), `search`/`cmd.focus`/`cmd.move`/`cmd.new`/`cmd.rename`/`cmd.open`/`cmd.merge` 메시지, 컨텍스트 메뉴 "주제로 보내기 ▸ [새 주제로 / 주제 목록]"(500ms 디바운스 재구축), 단축키 `send-to-last-topic`(Ctrl+Shift+M), `waitForWindow`(트래커·서비스가 창을 인지할 때까지 최대 3초 폴링)
+  - 팝업 `App.tsx` 전면 교체: 입력창 + 결과 목록(주제 행/탭 행/커맨드 제안 행), ArrowUp/Down, Enter(탭 이동)·Ctrl/⌘+Enter(창만)·Shift+Enter(보낸 뒤 이동)·Tab(제안 채움)·Esc(지우기/닫기), IME 가드, `#주제`/`@saved` 범위, 커맨드 자동완성, 실행 후 팝업 닫기 또는 안내 문구, 하단 힌트
+  - manifest: `send-to-last-topic` 커맨드 추가
+  - 테스트 21건 추가(commandRunner 15 — 가짜 Chrome 월드로 이벤트 파이프라인 재현, adoptWindow 3, searchDocs 1, ime 2) → 총 174/174. typecheck·lint·build 통과
+- **결정**:
+  - 검색은 SW에서 실행(팝업은 메시지만) — 단일 진실 원천, 인덱스는 변경 후 지연 재구축(1,100문서 83 ms)
+  - saved 주제 복원은 **같은 주제 ID를 새 창에 재연결**(adoptWindow). 창 이벤트 경합은 자동 생성 주제 병합으로 해결
+  - `>close`, `>save`는 E11(세션 저장)로 유보. `>open`, `>merge`는 이번에 구현
+  - 창 포커스는 `windows.update({focused:true, drawAttention:true})`. Chrome이 백그라운드일 때의 OS 포커스 제약은 Desktop 몫(F-08)
+- **산출물**: 소스 신규 5(commandRunner, searchDocs, ime, chrome/actions, popup 재작성), 수정 5(topicService, messages, background, wxt.config, style), 테스트 4
+- **미검증**: Windows MS 한국어 IME / macOS 두벌식에서 조합 중 Enter 오동작 0 확인, 팝업 오픈→입력 가능 100 ms, 탭 보내기 200 ms — 사용자 실기기 확인 대기
+- **커밋**: 미커밋 (E04~E06 일괄 예정)
