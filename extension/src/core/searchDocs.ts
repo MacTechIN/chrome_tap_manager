@@ -28,9 +28,14 @@ export function buildSearchDocs(store: Store): SearchDoc[] {
     });
   }
 
+  // A saved tab identical (url+title) to an open tab is noise: selecting it would restore a
+  // whole saved window next to the live one. Show the live tab only.
+  const openFingerprints = new Set(store.tabs.filter((t) => t.isOpen).map((t) => t.fingerprint));
+
   for (const tab of store.tabs) {
     const topic = topicById.get(tab.topicId);
     if (!topic) continue;
+    if (!tab.isOpen && openFingerprints.has(tab.fingerprint)) continue;
     const { host, path } = splitUrl(tab.url);
     docs.push({
       kind: 'tab',

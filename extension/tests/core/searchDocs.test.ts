@@ -71,6 +71,20 @@ describe('buildSearchDocs', () => {
       ],
     };
 
+    // A saved copy of an open tab (same fingerprint) must not be listed.
+    store.tabs.push({
+      id: 'dup',
+      topicId: 't2',
+      fingerprint: 'f-open',
+      url: 'https://www.github.com/x/y?z=1',
+      title: 'Repo',
+      index: 1,
+      isOpen: false,
+      lastActiveAt: 1,
+      updatedAt: 1,
+    });
+    store.tabs[0]!.fingerprint = 'f-open';
+
     const docs = buildSearchDocs(store);
     expect(docs.map((d) => d.id)).toEqual(['topic:t1', 'topic:t2', 'tab:a', 'tab:b']);
     expect(docs[0]).toMatchObject({

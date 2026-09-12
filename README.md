@@ -64,6 +64,7 @@
 
 | 날짜 | 버전 / 태그 | 커밋 | 내용 |
 |---|---|---|---|
+| 2026-09-12 | (미커밋) | — | **버그 수정**: 리로드 후 저장된 복제 주제를 복원하면 동일한 창이 하나 더 열리던 문제. 리로드·재시작 시 탭 지문(Jaccard ≥ 0.5)으로 기존 주제 재연결, 이름 없는 복제 저장 주제 자동 정리(≥ 0.8), 검색에서 열린 탭과 동일한 저장 탭 숨김. 테스트 180건 |
 | 2026-09-12 | `ext-v0.2.0` | `9404ba5` | **EM2 완료.** E06 Popup 검색창 + 정리 커맨드: `core/commandRunner.ts`(focus/restore/move/new/rename/merge), `core/searchDocs.ts`, `core/ime.ts`, `chrome/actions.ts`, `TopicService.adoptWindow`, 백그라운드 검색 인덱스·컨텍스트 메뉴·단축키(Ctrl+Shift+M), Solid 팝업(검색·자동완성·키보드·IME 가드). 테스트 21건 추가 → 174건 |
 | 2026-09-12 | (ext-v0.2.0에 포함) | `9404ba5` | E05 검색 엔진 코어 + 커맨드 파서: `core/search/{hangul,fuzzy,index}.ts`(MiniSearch 3중 필드 + fzf형 부분열 매칭, 랭킹 부스트), `core/command.ts`(`#`/`@saved`/`>` 문법, 7개 커맨드, 한글 인식 주제 자동완성). 테스트 39건 추가 → 153건, 1,100문서 쿼리 평균 1.3 ms |
 | 2026-09-12 | (ext-v0.2.0에 포함) | `9404ba5` | E04 Topic = 창 모델: `core/topicService.ts`(창 생성→Topic, 창 닫힘→saved, 탭 행 동기화, rename/deleteSaved), `core/autoName.ts`, `Repo.batch()`, 세션 마커로 stale windowId 무효화, 팝업에 주제 목록·인라인 이름 변경. 테스트 28건 추가 → 114건 |

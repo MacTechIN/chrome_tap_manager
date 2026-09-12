@@ -225,3 +225,18 @@
 - **요청**: "커밋"
 - **수행**: E04~E06 작업분(32파일, +3,975/-101)을 커밋 `9404ba5`로 커밋, annotated 태그 `ext-v0.2.0`. README/계획서/history의 "(미커밋)" 표기를 해시로 갱신하는 후속 커밋 1건
 - **푸시**: 미푸시 (사용자 지시 대기)
+
+## #18 · 2026-09-12 · 버그 수정: 리로드 후 복제 창이 열림
+
+- **요청**: "버그 발견, 검색 후 구글 관련 검색 후 열으니 동일한 탭의 윈도우가 똑같이 열림. 시스템 속도 저하 및 버그" + 스크린샷(탭 구성이 같은 창 2개)
+- **원인**: `Alt+R` 리로드마다 세션 마커가 초기화 → E04 로직이 열려 있던 주제를 전부 saved로 내리고 현재 창에 새 주제를 생성 → storage에 현재 창과 동일한 탭 목록의 저장 주제가 누적. 검색 결과에 그 저장 탭이 함께 노출되고, 선택 시 E06 복원 로직이 `windows.create(urls)`로 30여 개 탭짜리 복제 창을 생성
+- **수정** (`src/core/topicService.ts`, `src/core/searchDocs.ts`):
+  - `reconcile()` fresh session: stale open 주제를 곧바로 saved로 내리지 않고 **탭 지문 Jaccard ≥ 0.5**로 라이브 창과 1:1 그리디 매칭(`matchWindows`) → `relink()`(같은 id·이름 유지, 닫힘 처리 후 지문으로 행 재바인딩, 안 맞는 행 삭제). 미매칭만 saved
+  - `dropDuplicateSavedTopics()`: 열린 창과 Jaccard ≥ 0.8인 **이름 없는** saved 주제 삭제(이미 쌓인 복제도 다음 리로드에서 정리). 이름 지정 주제는 보존
+  - `syncTabsOfWindow`: 같은 지문의 닫힌 행을 재사용(id·lastActiveAt·subgroup 유지) — relink/복원 공용
+  - `buildSearchDocs`: 열린 탭과 지문이 같은 저장 탭은 검색 문서에서 제외
+  - 상수 `RELINK_MIN_JACCARD=0.5`, `DUPLICATE_MIN_JACCARD=0.8`, `jaccard()`, `liveFingerprints()` export
+  - 테스트 6건 추가(`topicService.reload.test.ts`: 같은 windowId 재연결, 다른 windowId 재연결+닫힌 탭 정리, 미매칭 saved, 이름 없는 복제 삭제/이름 있는 복제 보존, 두 창 1:1 매칭, jaccard) + searchDocs 중복 제외 → 총 180/180. typecheck·lint·build 통과
+- **결정**: E11로 미뤘던 지문 재매칭·복제 정리를 버그 수정으로 선반영 (계획서 원칙 "뒤 스텝 앞당기지 않기"의 예외 — 실사용 버그). E11에서는 `>close`/`>save`/JSON 내보내기와 옵션만 남음
+- **사용자 조치 안내**: 복제 창 닫기 → `Alt+R` 리로드 → 리로드 시 자동 정리
+- **커밋**: 미커밋

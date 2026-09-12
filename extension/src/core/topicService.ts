@@ -112,15 +112,21 @@ export class TopicService {
    */
   async reconcile(state: LiveState): Promise<void> {
     const now = this.repo.now();
+    const liveWindowIds = new Set(Object.keys(state.windows).map(Number));
 
     if (this.freshSession) {
-      for (const t of this.repo.listTopics()) {
-        if (t.status === 'open') await this.toSaved(t, now);
+      // Browser restart / extension reload: every stored windowId is stale (Chrome reuses ids).
+      // Re-link stale open topics to live windows by tab-fingerprint overlap instead of
+      // blindly saving them — otherwise each reload leaves a duplicate "saved" copy of
+      // every open window, and restoring one of those opens a second identical window.
+      const stale = this.repo.listTopics().filter((t) => t.status === 'open');
+      const matched = this.matchWindows(stale, liveWindowIds, state, RELINK_MIN_JACCARD);
+      for (const [windowId, topic] of matched) await this.relink(topic, windowId, state, now);
+      for (const t of stale) {
+        if (![...matched.values()].some((m) => m.id === t.id)) await this.toSaved(t, now);
       }
       this.freshSession = false;
     }
-
-    const liveWindowIds = new Set(Object.keys(state.windows).map(Number));
 
     // Open topics whose window vanished while the SW was dead → saved.
     for (const t of this.repo.listTopics()) {
@@ -141,11 +147,82 @@ export class TopicService {
       }
     }
 
+    await this.dropDuplicateSavedTopics();
+
     this.lastFocusedWindowId = state.focusedWindowId;
     this.log?.('topics reconciled', {
       topics: this.repo.listTopics().length,
       openTabs: this.repo.listTabs({ isOpen: true }).length,
     });
+  }
+
+  /** Greedy best-overlap assignment: each live window gets at most one topic and vice versa. */
+  private matchWindows(
+    candidates: readonly Topic[],
+    liveWindowIds: Set<number>,
+    state: LiveState,
+    minJaccard: number,
+  ): Map<number, Topic> {
+    const topicFps = new Map(candidates.map((t) => [t.id, this.topicFingerprints(t.id)] as const));
+    const pairs: { windowId: number; topic: Topic; score: number }[] = [];
+    for (const windowId of liveWindowIds) {
+      const live = liveFingerprints(state, windowId);
+      if (live.size === 0) continue;
+      for (const topic of candidates) {
+        const score = jaccard(live, topicFps.get(topic.id)!);
+        if (score >= minJaccard) pairs.push({ windowId, topic, score });
+      }
+    }
+    pairs.sort((a, b) => b.score - a.score);
+    const out = new Map<number, Topic>();
+    const usedTopics = new Set<string>();
+    for (const p of pairs) {
+      if (out.has(p.windowId) || usedTopics.has(p.topic.id)) continue;
+      out.set(p.windowId, p.topic);
+      usedTopics.add(p.topic.id);
+    }
+    return out;
+  }
+
+  /** Re-attach an existing topic to a live window; tab rows are re-bound by fingerprint. */
+  private async relink(topic: Topic, windowId: number, state: LiveState, now: number) {
+    const rows = this.repo.listTabs({ topicId: topic.id });
+    // Detach every row first (stale chromeTabIds), then syncTabsOfWindow re-binds by fingerprint.
+    await this.repo.putTabs(
+      rows.map((r) => ({ ...r, isOpen: false, chromeTabId: undefined, updatedAt: now })),
+    );
+    const open: Topic = { ...topic, status: 'open', windowId, updatedAt: now };
+    await this.repo.putTopic(open);
+    await this.syncTabsOfWindow(open, windowId, state);
+    // Rows that found no live tab are gone from this window → drop (window = topic).
+    for (const r of this.repo.listTabs({ topicId: topic.id })) {
+      if (!r.isOpen) await this.repo.deleteTab(r.id);
+    }
+    this.log?.('topic relinked', { id: topic.id, name: topic.name, windowId });
+  }
+
+  /**
+   * Unnamed saved topics that duplicate an open window (≥ DUPLICATE_MIN_JACCARD overlap)
+   * are artifacts of earlier reloads — remove them. Named ones are the user's data: keep.
+   */
+  private async dropDuplicateSavedTopics(): Promise<void> {
+    const topics = this.repo.listTopics();
+    const openFps = topics
+      .filter((t) => t.status === 'open')
+      .map((t) => this.topicFingerprints(t.id));
+    for (const t of topics) {
+      if (t.status !== 'saved' || t.isNamed) continue;
+      const fps = this.topicFingerprints(t.id);
+      if (fps.size === 0) continue;
+      if (openFps.some((o) => jaccard(fps, o) >= DUPLICATE_MIN_JACCARD)) {
+        await this.repo.deleteTopic(t.id);
+        this.log?.('duplicate saved topic dropped', { id: t.id, name: t.name });
+      }
+    }
+  }
+
+  private topicFingerprints(topicId: string): Set<string> {
+    return new Set(this.repo.listTabs({ topicId }).map((r) => r.fingerprint));
   }
 
   // ---- user mutations -----------------------------------------------------
@@ -351,9 +428,18 @@ export class TopicService {
 
   private async syncTabsOfWindow(topic: Topic, windowId: number, state: LiveState): Promise<void> {
     const live = tabsOf(state, windowId);
+    // Closed rows of this topic can be re-bound to live tabs with the same fingerprint
+    // (restore / relink), so ids, lastActiveAt and subgroup survive.
+    const closedByFp = new Map<string, Tab[]>();
+    for (const r of this.repo.listTabs({ topicId: topic.id, isOpen: false })) {
+      const list = closedByFp.get(r.fingerprint) ?? [];
+      list.push(r);
+      closedByFp.set(r.fingerprint, list);
+    }
     const rows: Tab[] = [];
     for (const t of live) {
-      const existing = this.repo.findTabByChromeId(t.id);
+      let existing = this.repo.findTabByChromeId(t.id);
+      if (!existing) existing = closedByFp.get(fingerprint(t.url, t.title))?.shift();
       const row = this.rowFor(t, topic.id, existing);
       if (!existing || !sameRow(existing, row)) rows.push(row);
     }
@@ -433,6 +519,22 @@ export class TopicService {
     }
     if (changed.length > 0) await this.repo.putTabs(changed);
   }
+}
+
+/** Overlap needed to re-link a stale topic to a live window after a reload/restart. */
+export const RELINK_MIN_JACCARD = 0.5;
+/** Overlap at which an unnamed saved topic is considered a duplicate of an open window. */
+export const DUPLICATE_MIN_JACCARD = 0.8;
+
+export function liveFingerprints(state: LiveState, windowId: number): Set<string> {
+  return new Set(tabsOf(state, windowId).map((t) => fingerprint(t.url, t.title)));
+}
+
+export function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 0;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter++;
+  return inter / (a.size + b.size - inter);
 }
 
 function sameRow(a: Tab, b: Tab): boolean {
