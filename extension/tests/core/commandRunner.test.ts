@@ -150,7 +150,7 @@ describe('CommandRunner.focus', () => {
   it('open tab: activate + focus window; mode window skips activation', async () => {
     const row = w.repo.findTabByChromeId(2)!;
     const r = await w.runner.focus({ kind: 'tab', tabRowId: row.id });
-    expect(r).toEqual({ windowId: 10, chromeTabId: 2, restored: false });
+    expect(r).toEqual({ windowId: 10, chromeTabId: 2 });
     expect(w.calls).toEqual(['activate 2', 'focus 10']);
 
     w.calls = [];
@@ -160,41 +160,19 @@ describe('CommandRunner.focus', () => {
 
   it('open topic: focus its window', async () => {
     const r = await w.runner.focus({ kind: 'topic', topicId: w.topicOf(20).id });
-    expect(r).toEqual({ windowId: 20, restored: false });
+    expect(r).toEqual({ windowId: 20 });
     expect(w.calls).toEqual(['focus 20']);
   });
 
-  it('saved topic: restore into a new window (same topic id), then focus', async () => {
+  it('a closed window has no topic: focusing it is an error, nothing is reopened', async () => {
     const topic = w.topicOf(20);
     await w.service.rename(topic.id, 'B work');
     await w.closeWindow(20);
-    expect(w.repo.getTopic(topic.id)!.status).toBe('saved');
-
-    const r = await w.runner.focus({ kind: 'topic', topicId: topic.id });
-    expect(r).toMatchObject({ windowId: 100, restored: true });
-    expect(w.calls).toEqual(['create urls 1 -> 100', 'focus 100']);
-    const restored = w.repo.getTopic(topic.id)!;
-    expect(restored).toMatchObject({ status: 'open', windowId: 100, name: 'B work' });
-    // the auto-created topic for window 100 was merged away
-    expect(w.repo.listTopics().filter((t) => t.windowId === 100)).toHaveLength(1);
-    const rows = w.repo.listTabs({ topicId: topic.id });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ isOpen: true, url: 'https://b.com/1' });
-  });
-
-  it('saved tab: restore topic then activate the tab with that url', async () => {
-    const topic = w.topicOf(10);
-    await w.service.rename(topic.id, 'A');
-    const savedRow = w.repo.findTabByChromeId(2)!;
-    await w.closeWindow(10);
-
-    const r = await w.runner.focus({ kind: 'tab', tabRowId: savedRow.id });
-    expect(r.restored).toBe(true);
-    expect(w.calls[0]).toBe('create urls 2 -> 100');
-    const live = w.state.windows[100]!.tabIds.map((id) => w.state.tabs[id]!.url);
-    expect(live).toEqual(['https://a.com/1', 'https://a.com/2']);
-    expect(w.calls).toContain(`activate ${r.chromeTabId}`);
-    expect(w.state.tabs[r.chromeTabId!]!.url).toBe('https://a.com/2');
+    expect(w.repo.getTopic(topic.id)).toBeUndefined();
+    await expect(w.runner.focus({ kind: 'topic', topicId: topic.id })).rejects.toMatchObject({
+      code: 'topic.notFound',
+    });
+    expect(w.calls).toEqual([]); // no createWindow
   });
 
   it('chromeTab target', async () => {
@@ -221,7 +199,7 @@ describe('CommandRunner.move / newTopic / rename / merge', () => {
   it('move to an open topic: tabs.move, rows re-parented, move log written, last topic remembered', async () => {
     const target = w.topicOf(20);
     const r = await w.runner.move({ topicId: target.id, chromeTabIds: [1] });
-    expect(r).toEqual({ topicId: target.id, windowId: 20, moved: 1, restored: false });
+    expect(r).toEqual({ topicId: target.id, windowId: 20, moved: 1 });
     expect(w.calls).toEqual(['move [1] -> 20']);
     expect(w.repo.findTabByChromeId(1)!.topicId).toBe(target.id);
     expect(w.repo.listMoveLog()).toMatchObject([
@@ -242,16 +220,6 @@ describe('CommandRunner.move / newTopic / rename / merge', () => {
     await w.runner.move({ topicId: w.topicOf(10).id, chromeTabIds: [3] });
     expect(w.state.windows[20]).toBeUndefined();
     expect(w.repo.getTopic(from.id)).toBeUndefined();
-  });
-
-  it('move to a saved topic restores it first', async () => {
-    const target = w.topicOf(20);
-    await w.service.rename(target.id, 'B');
-    await w.closeWindow(20);
-    const r = await w.runner.move({ topicId: target.id, chromeTabIds: [1] });
-    expect(r).toMatchObject({ windowId: 100, moved: 1, restored: true });
-    expect(w.calls).toEqual(['create urls 1 -> 100', 'move [1] -> 100']);
-    expect(w.repo.listTabs({ topicId: target.id, isOpen: true })).toHaveLength(2);
   });
 
   it('move with no tabs throws', async () => {

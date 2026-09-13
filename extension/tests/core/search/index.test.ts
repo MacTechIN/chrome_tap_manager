@@ -131,6 +131,15 @@ describe('SearchIndex', () => {
     expect(ids(index.search({ text: 'same', now: NOW }))[0]).toBe('tab:new');
   });
 
+  it('scope: open only excludes saved topics and closed tabs', () => {
+    const hits = index.search({ text: '', scope: { kind: 'open' }, now: NOW, limit: 50 });
+    expect(ids(hits)).not.toContain('topic:t3');
+    expect(ids(hits)).not.toContain('tab:e');
+    expect(ids(hits)).toContain('topic:t1');
+    expect(ids(hits)).toContain('tab:a');
+    expect(ids(index.search({ text: 'rust', scope: { kind: 'open' }, now: NOW }))).toEqual([]);
+  });
+
   it('scope: saved only / single topic', () => {
     expect(ids(index.search({ text: '', scope: { kind: 'saved' }, now: NOW }))).toEqual([
       'topic:t3',

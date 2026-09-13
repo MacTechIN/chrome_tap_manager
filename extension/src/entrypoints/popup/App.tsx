@@ -12,7 +12,14 @@ import type { RuntimeRequest, RuntimeResponse } from '../../core/messages';
 import type { SearchHit, SearchScope } from '../../core/search/index';
 
 async function send(req: RuntimeRequest): Promise<RuntimeResponse> {
-  return (await browser.runtime.sendMessage(req)) as RuntimeResponse;
+  const res = (await browser.runtime.sendMessage(req)) as RuntimeResponse | undefined;
+  if (!res) {
+    // No listener answered: the service worker crashed at startup or is not running.
+    throw new Error(
+      '백그라운드가 응답하지 않습니다. chrome://extensions에서 확장을 새로고침해 주세요.',
+    );
+  }
+  return res;
 }
 
 type Row = { kind: 'hit'; hit: SearchHit } | { kind: 'suggestion'; s: CommandSuggestion };
@@ -26,6 +33,31 @@ export default function App() {
   const [currentTabIds, setCurrentTabIds] = createSignal<number[]>([]);
   const [notice, setNotice] = createSignal<{ kind: 'info' | 'error'; text: string } | undefined>();
   const [busy, setBusy] = createSignal(false);
+  const [stats, setStats] = createSignal<string>('');
+  const [bgErrors, setBgErrors] = createSignal<string[]>([]);
+
+  async function loadStats() {
+    try {
+      const res = await send({ type: 'debug.stats' });
+      if (res.type !== 'debug.stats') {
+        setStats(
+          res.type === 'error'
+            ? `진단 실패: ${res.message} (확장을 새로고침하면 백그라운드가 갱신됩니다)`
+            : `진단 응답 형식 오류: ${res.type}`,
+        );
+        return;
+      }
+      const kb = res.bytesInUse === undefined ? '?' : Math.round(res.bytesInUse / 1024).toString();
+      setStats(
+        `주제 ${res.openTopics}/${res.topics} · 탭 ${res.openTabs}/${res.tabs} · 색인 ${res.indexSize}` +
+          `${res.indexDirty ? '*' : ''} · 창 ${res.liveWindows} · 라이브탭 ${res.liveTabs} · seq ${res.seq}` +
+          ` · 저장 ${kb}KB${res.freshSession ? ' · 새 세션' : ''}`,
+      );
+      setBgErrors(res.errors);
+    } catch (err) {
+      setStats(String(err instanceof Error ? err.message : err));
+    }
+  }
   let inputEl: HTMLInputElement | undefined;
   let listEl: HTMLUListElement | undefined;
   let queryId = 0;
@@ -62,30 +94,48 @@ export default function App() {
       setSelected(0);
       return;
     }
-    let scope: SearchScope = { kind: 'all' };
+    // Only what is open right now (a topic lives only while its window exists).
+    let scope: SearchScope = { kind: 'open' };
     let text = parsed.text;
-    if (parsed.mode === 'saved') scope = { kind: 'saved' };
     if (parsed.mode === 'topic') {
       const t = rankTopics(parsed.topicQuery, topics())[0];
       if (t) scope = { kind: 'topic', topicId: t.id };
       text = parsed.text;
     }
-    const res = await send({
-      type: 'search',
-      text,
-      scope,
-      currentWindowId: currentWindowId(),
-      limit: 30,
-    });
+    let res: RuntimeResponse;
+    try {
+      res = await send({
+        type: 'search',
+        text,
+        scope,
+        currentWindowId: currentWindowId(),
+        limit: 30,
+      });
+    } catch (err) {
+      if (id !== queryId) return;
+      setRows([]);
+      setNotice({ kind: 'error', text: String(err instanceof Error ? err.message : err) });
+      return;
+    }
     if (id !== queryId) return; // stale
+    if (res.type === 'error') {
+      setRows([]);
+      setNotice({ kind: 'error', text: `검색 실패: ${res.message}` });
+      return;
+    }
     setRows(res.type === 'search' ? res.hits.map((hit) => ({ kind: 'hit', hit })) : []);
     setSelected(0);
   }
 
   onMount(async () => {
     inputEl?.focus();
-    await loadContext();
+    try {
+      await loadContext();
+    } catch (err) {
+      setNotice({ kind: 'error', text: String(err instanceof Error ? err.message : err) });
+    }
     await refresh();
+    void loadStats();
   });
 
   createEffect(() => {
@@ -175,9 +225,6 @@ export default function App() {
           done(res.type === 'topic' ? `이름을 "${res.topic.name}"(으)로 바꿨습니다` : '완료');
           return;
         }
-        case 'open':
-          expectOk(await send({ type: 'cmd.open', topicId: s.topic!.id }));
-          return done();
         case 'merge':
           expectOk(
             await send({
@@ -188,8 +235,7 @@ export default function App() {
           );
           return done();
         case 'close':
-        case 'save':
-          setNotice({ kind: 'info', text: `>${s.command}는 E11(세션 저장)에서 지원됩니다` });
+          setNotice({ kind: 'info', text: '>close는 E11에서 지원됩니다' });
           return;
       }
     });
@@ -224,7 +270,7 @@ export default function App() {
   const hint = () =>
     mode() === 'command'
       ? 'Enter 실행 · Tab 완성 · Shift+Enter 보낸 뒤 이동 · Esc 지우기'
-      : 'Enter 탭으로 이동 · Ctrl+Enter 창만 · > 명령 · # 주제 · @saved 저장됨';
+      : 'Enter 탭으로 이동 · Ctrl+Enter 창만 · > 명령 · # 주제';
 
   return (
     <main class="popup">
@@ -314,7 +360,33 @@ export default function App() {
       </ul>
 
       <Show when={notice()}>{(n) => <p class={`notice ${n().kind}`}>{n().text}</p>}</Show>
-      <p class="hint">{hint()}</p>
+      <p class="hint">
+        {hint()}
+        {' · '}
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            const api = (
+              browser as unknown as { sidePanel?: { open(o: { windowId: number }): Promise<void> } }
+            ).sidePanel;
+            const wid = currentWindowId();
+            if (api && wid !== undefined) void api.open({ windowId: wid });
+          }}
+        >
+          사이드 패널
+        </a>
+      </p>
+      <Show when={stats()}>
+        <p class="hint stats" title="진단 정보 (열림/전체)">
+          {stats()}
+        </p>
+      </Show>
+      <Show when={bgErrors().length > 0}>
+        <p class="notice error">
+          <For each={bgErrors()}>{(e) => <span class="bg-error">{e}</span>}</For>
+        </p>
+      </Show>
     </main>
   );
 }

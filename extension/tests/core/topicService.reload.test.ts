@@ -103,7 +103,7 @@ describe('reload / restart: re-link instead of duplicating', () => {
     ]);
   });
 
-  it('a stale topic with no matching window becomes saved; unrelated windows get new topics', async () => {
+  it('a stale topic with no matching window is dropped; unrelated windows get new topics', async () => {
     const repo = new Repo(new MemoryKV(), { now: () => T0, newId: () => crypto.randomUUID() });
     await repo.init();
     await seedPreviousSession(repo);
@@ -111,13 +111,12 @@ describe('reload / restart: re-link instead of duplicating', () => {
     await freshReload(repo, [
       { id: 10, focused: true, tabs: [liveTab(1, 10, 0, 'https://zzz.com/')] },
     ]);
-    const prev = repo.getTopic('prev')!;
-    expect(prev).toMatchObject({ status: 'saved', windowId: undefined });
-    expect(repo.listTabs({ topicId: 'prev' })).toHaveLength(3);
-    expect(repo.findTopicByWindow(10)!.id).not.toBe('prev');
+    expect(repo.getTopic('prev')).toBeUndefined();
+    expect(repo.listTabs({ topicId: 'prev' })).toEqual([]);
+    expect(repo.findTopicByWindow(10)).toMatchObject({ status: 'open', name: 'zzz.com' });
   });
 
-  it('unnamed saved duplicates of an open window are dropped; named ones are kept', async () => {
+  it('legacy saved duplicates of an open window are absorbed; the live topic inherits the name', async () => {
     const repo = new Repo(new MemoryKV(), { now: () => T0, newId: () => crypto.randomUUID() });
     await repo.init();
     // Two leftovers from earlier reloads with the same tab set: one unnamed, one named.
@@ -162,10 +161,62 @@ describe('reload / restart: re-link instead of duplicating', () => {
       },
     ]);
 
-    const ids = repo.listTopics().map((t) => t.id);
-    expect(ids).not.toContain('dupUnnamed');
-    expect(ids).toContain('dupNamed');
+    // Both duplicates are absorbed; the (unnamed) live topic inherits the name "Keep me".
+    const topics = repo.listTopics();
+    expect(topics.map((t) => t.id)).not.toContain('dupUnnamed');
+    expect(topics.map((t) => t.id)).not.toContain('dupNamed');
+    expect(topics).toHaveLength(1);
+    expect(topics[0]).toMatchObject({
+      status: 'open',
+      windowId: 10,
+      name: 'Keep me',
+      isNamed: true,
+    });
     expect(repo.listTabs({ topicId: 'dupUnnamed' })).toEqual([]);
+    expect(repo.listTabs({ topicId: 'dupNamed' })).toEqual([]);
+  });
+
+  it('a named open topic keeps its own name when absorbing a named duplicate', async () => {
+    const repo = new Repo(new MemoryKV(), { now: () => T0, newId: () => crypto.randomUUID() });
+    await repo.init();
+    await seedPreviousSession(repo, { id: 'live', name: 'Current', windowId: 10 });
+    await repo.putTopic({
+      id: 'dup',
+      name: 'Old name',
+      isNamed: true,
+      status: 'saved',
+      browser: 'chrome',
+      lastActiveAt: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await repo.putTabs(
+      ['https://a.com/1', 'https://a.com/2', 'https://a.com/3'].map((url, i): Tab => ({
+        id: `dup-${i}`,
+        topicId: 'dup',
+        fingerprint: fingerprint(url, url),
+        url,
+        title: url,
+        index: i,
+        isOpen: false,
+        lastActiveAt: 1,
+        updatedAt: 1,
+      })),
+    );
+    await freshReload(repo, [
+      {
+        id: 10,
+        focused: true,
+        tabs: [
+          liveTab(1, 10, 0, 'https://a.com/1'),
+          liveTab(2, 10, 1, 'https://a.com/2'),
+          liveTab(3, 10, 2, 'https://a.com/3'),
+        ],
+      },
+    ]);
+    const topics = repo.listTopics();
+    expect(topics).toHaveLength(1);
+    expect(topics[0]).toMatchObject({ id: 'live', name: 'Current', status: 'open' });
   });
 
   it('two similar windows are matched one-to-one by best overlap', async () => {
@@ -216,6 +267,37 @@ describe('reload / restart: re-link instead of duplicating', () => {
     ]);
     expect(repo.findTopicByWindow(20)!.id).toBe('prev2');
     expect(repo.findTopicByWindow(21)!.id).toBe('prev');
+  });
+
+  it('unnamed saved leftovers are purged on reload even when they match nothing', async () => {
+    const repo = new Repo(new MemoryKV(), { now: () => T0, newId: () => crypto.randomUUID() });
+    await repo.init();
+    await repo.putTopic({
+      id: 'junk',
+      name: 'file://C:',
+      isNamed: false,
+      status: 'saved',
+      browser: 'chrome',
+      lastActiveAt: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await repo.putTab({
+      id: 'junk-0',
+      topicId: 'junk',
+      fingerprint: 'x',
+      url: 'file:///C:/doc.pdf',
+      title: 'doc',
+      index: 0,
+      isOpen: false,
+      lastActiveAt: 1,
+      updatedAt: 1,
+    });
+    await freshReload(repo, [
+      { id: 10, focused: true, tabs: [liveTab(1, 10, 0, 'https://a.com/')] },
+    ]);
+    expect(repo.getTopic('junk')).toBeUndefined();
+    expect(repo.listTabs({ topicId: 'junk' })).toEqual([]);
   });
 
   it('jaccard basics', () => {

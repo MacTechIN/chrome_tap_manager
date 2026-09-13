@@ -86,8 +86,13 @@ export class Repo {
 
   async init(): Promise<InitResult> {
     const meta = await this.kv.get<Meta>(META_KEY);
-    const fresh = meta === undefined;
-    let store = fresh ? emptyStore() : await this.readAll();
+    // Always read the collections. A missing meta key must never wipe existing data
+    // (e.g. a lost/partial write): treat "no meta but data present" as an old store
+    // at the current schema and just (re)write the meta key.
+    let store = await this.readAll();
+    const hasData = COLLECTIONS.some((c) => store[c].length > 0);
+    const fresh = meta === undefined && !hasData;
+    if (fresh) store = emptyStore();
     let version = meta?.schemaVersion ?? SCHEMA_VERSION;
     let migrated = false;
 
@@ -106,6 +111,8 @@ export class Repo {
     this.ready = true;
     if (fresh || migrated) {
       await this.writeAll();
+    }
+    if (fresh || migrated || meta === undefined) {
       await this.kv.set(META_KEY, { schemaVersion: SCHEMA_VERSION } satisfies Meta);
     }
     return { schemaVersion: SCHEMA_VERSION, migrated, fresh };

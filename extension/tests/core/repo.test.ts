@@ -247,6 +247,21 @@ describe.each(backends)('Repo over $name', ({ make, reset }) => {
     expect(repo.newId()).toBe('id-2');
   });
 
+  it('missing meta with existing data is NOT treated as fresh (data kept, meta rewritten)', async () => {
+    await repo.putTopic(topic());
+    await repo.putTab(tab());
+    await kv.remove(META_KEY);
+
+    const again = new Repo(kv);
+    const r = await again.init();
+    expect(r.fresh).toBe(false);
+    expect(again.listTopics()).toHaveLength(1);
+    expect(again.listTabs()).toHaveLength(1);
+    expect(await kv.get<{ schemaVersion: number }>(META_KEY)).toEqual({
+      schemaVersion: SCHEMA_VERSION,
+    });
+  });
+
   it('refuses a newer schema than supported', async () => {
     await kv.set(META_KEY, { schemaVersion: SCHEMA_VERSION + 1 });
     const r = new Repo(kv);

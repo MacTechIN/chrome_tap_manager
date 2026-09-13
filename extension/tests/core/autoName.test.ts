@@ -23,6 +23,24 @@ describe('nameFromTabs', () => {
     expect(nameFromTabs([{ url: 'about:blank', title: '' }])).toBeUndefined();
   });
 
+  it('local / internal pages use the title, not "file://C:"', () => {
+    expect(nameFromTabs([{ url: 'file:///C:/Users/x/report.pdf', title: 'report.pdf' }])).toBe(
+      'report.pdf',
+    );
+    expect(nameFromTabs([{ url: 'chrome://extensions/', title: '확장 프로그램' }])).toBe(
+      '확장 프로그램',
+    );
+    expect(nameFromTabs([{ url: 'file:///C:/a.pdf', title: '' }])).toBe('file://C:');
+    // several tabs: only web hosts count; local pages do not outvote them
+    expect(
+      nameFromTabs([
+        { url: 'file:///C:/a.pdf', title: 'a' },
+        { url: 'file:///C:/b.pdf', title: 'b' },
+        { url: 'https://arxiv.org/1', title: '' },
+      ]),
+    ).toBe('arxiv.org');
+  });
+
   it('several tabs → most common host; ties keep first seen', () => {
     expect(
       nameFromTabs([

@@ -1,6 +1,7 @@
 import { browser, defineBackground } from '#imports';
 import { createChromeActions } from '../chrome/actions';
 import { loadInitialState, subscribeChromeEvents } from '../chrome/events';
+import { registerOmnibox } from '../chrome/omnibox';
 import { ChromeStorageKV } from '../chrome/storageKv';
 import { CommandRunner } from '../core/commandRunner';
 import type { LiveEvent, LiveState } from '../core/liveState';
@@ -23,6 +24,17 @@ export default defineBackground(() => {
   const startedAt = Date.now();
   const log = (msg: string, data?: unknown) =>
     data === undefined ? console.log(`[ctm] ${msg}`) : console.log(`[ctm] ${msg}`, data);
+  // Last few failures, surfaced in the popup (debug.stats) so field issues are visible.
+  const errors: string[] = [];
+  const fail = (msg: string, err: unknown) => {
+    const text = `${new Date().toLocaleTimeString()} ${msg}: ${
+      err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+    }`;
+    errors.push(text);
+    if (errors.length > 5) errors.shift();
+    console.error(`[ctm] ${msg}`, err);
+  };
+  let sessionWasFresh: boolean | undefined;
 
   const localKv = new ChromeStorageKV('local');
   const sessionKv = new ChromeStorageKV('session');
@@ -49,7 +61,7 @@ export default defineBackground(() => {
         if (event.type !== 'tab.activated' && event.type !== 'window.focused') menuDirty = true;
         scheduleMenuRebuild();
       })
-      .catch((err) => log('topic apply failed', { type: event.type, err }));
+      .catch((err) => fail(`topic apply failed (${event.type})`, err));
   };
   tracker.onChange((state, event) => {
     if (service) enqueue(event, state);
@@ -57,12 +69,13 @@ export default defineBackground(() => {
   });
 
   // Chrome listeners must be registered in the first turn of the SW script.
-  const trackerReady = tracker.start().catch((err) => log('live tracker failed to start', err));
+  const trackerReady = tracker.start().catch((err) => fail('live tracker failed to start', err));
 
   const ready: Promise<void> = (async () => {
     await repo.init();
     const session = await sessionKv.get<{ id: string; startedAt: number }>(SESSION_KEY);
     const freshSession = session === undefined;
+    sessionWasFresh = freshSession;
     if (freshSession) {
       await sessionKv.set(SESSION_KEY, { id: crypto.randomUUID(), startedAt });
     }
@@ -78,7 +91,7 @@ export default defineBackground(() => {
     await trackerReady;
     await chain;
     log('topic service ready', { freshSession, topics: service.listTopics().length });
-  })().catch((err) => log('background init failed', err));
+  })().catch((err) => fail('background init failed', err));
 
   /** Waits until the live tracker sees the window and the topic service has processed it. */
   async function waitForWindow(windowId: number): Promise<void> {
@@ -176,8 +189,34 @@ export default defineBackground(() => {
     ready.then(rebuildMenu).catch((err) => log('menu init failed', err));
   });
 
+  // ---- omnibox: "t" + space in the address bar ----
+  // Optional integration: never let it prevent the message listener below from registering.
+  try {
+    registerOmnibox({
+      log,
+      search: async (text, limit) => {
+        await ready;
+        await chain;
+        ensureIndex();
+        const [current] = await browser.tabs.query({ active: true, currentWindow: true });
+        return index.search({
+          text,
+          scope: { kind: 'open' },
+          currentWindowId: current?.windowId,
+          limit,
+        });
+      },
+      activate: async (target) => {
+        await ready;
+        await runner!.focus(target);
+      },
+    });
+  } catch (err) {
+    log('omnibox registration failed', err);
+  }
+
   // ---- runtime messages (popup / side panel) ----
-  const fail = (err: unknown): RuntimeResponse =>
+  const toErrorResponse = (err: unknown): RuntimeResponse =>
     err instanceof TopicError
       ? { type: 'error', code: err.code, message: err.message }
       : { type: 'error', code: 'internal', message: String(err) };
@@ -192,6 +231,28 @@ export default defineBackground(() => {
         switch (msg?.type) {
           case 'live.get':
             return { type: 'live.state', state: tracker.current, startedAt };
+          case 'debug.stats': {
+            const snap = repo.snapshot();
+            const bytesInUse = await browser.storage.local
+              .getBytesInUse(null)
+              .catch(() => undefined);
+            return {
+              bytesInUse,
+              type: 'debug.stats',
+              topics: snap.topics.length,
+              openTopics: snap.topics.filter((t) => t.status === 'open').length,
+              tabs: snap.tabs.length,
+              openTabs: snap.tabs.filter((t) => t.isOpen).length,
+              indexSize: index.size,
+              indexDirty,
+              liveWindows: Object.keys(tracker.current.windows).length,
+              liveTabs: Object.keys(tracker.current.tabs).length,
+              seq: tracker.current.seq,
+              freshSession: sessionWasFresh,
+              startedAt,
+              errors: [...errors],
+            };
+          }
           case 'live.resync':
             await tracker.resync();
             await chain;
@@ -204,6 +265,10 @@ export default defineBackground(() => {
           case 'topic.deleteSaved':
             await svc.deleteSaved(msg.topicId);
             return { type: 'ok' };
+          case 'topic.setColor':
+            return { type: 'topic', topic: await svc.setColor(msg.topicId, msg.color) };
+          case 'sidepanel.tree':
+            return { type: 'sidepanel.tree', topics: svc.tree() };
           case 'search': {
             ensureIndex();
             const hits = index.search({
@@ -229,17 +294,13 @@ export default defineBackground(() => {
             return { type: 'topic', topic: await run.newTopic(msg) };
           case 'cmd.rename':
             return { type: 'topic', topic: await run.rename(msg) };
-          case 'cmd.open': {
-            const result = await run.focus({ kind: 'topic', topicId: msg.topicId }, 'window');
-            return { type: 'focus', result };
-          }
           case 'cmd.merge':
             return { type: 'move', result: await run.merge(msg) };
           default:
             return { type: 'error', code: 'internal', message: 'unknown message' };
         }
       };
-      handle().then(sendResponse, (err) => sendResponse(fail(err)));
+      handle().then(sendResponse, (err) => sendResponse(toErrorResponse(err)));
       return true;
     },
   );

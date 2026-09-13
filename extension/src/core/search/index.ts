@@ -42,7 +42,14 @@ export interface TabDoc {
 
 export type SearchDoc = TopicDoc | TabDoc;
 
-export type SearchScope = { kind: 'all' } | { kind: 'saved' } | { kind: 'topic'; topicId: string };
+/**
+ * 'open'  — only live windows/tabs (default for the popup and omnibox)
+ * 'saved' — only saved topics / closed tabs (`@saved`)
+ * 'topic' — everything inside one topic (`#topic`)
+ * 'all'   — no filter
+ */
+export type SearchScope =
+  { kind: 'all' } | { kind: 'open' } | { kind: 'saved' } | { kind: 'topic'; topicId: string };
 
 export interface SearchOptions {
   text: string;
@@ -345,6 +352,8 @@ function scopeAllows(scope: SearchScope, d: SearchDoc): boolean {
   switch (scope.kind) {
     case 'all':
       return true;
+    case 'open':
+      return d.kind === 'topic' ? d.status === 'open' : d.isOpen;
     case 'saved':
       return d.kind === 'topic' ? d.status === 'saved' : !d.isOpen;
     case 'topic':

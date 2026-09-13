@@ -240,3 +240,94 @@
 - **결정**: E11로 미뤘던 지문 재매칭·복제 정리를 버그 수정으로 선반영 (계획서 원칙 "뒤 스텝 앞당기지 않기"의 예외 — 실사용 버그). E11에서는 `>close`/`>save`/JSON 내보내기와 옵션만 남음
 - **사용자 조치 안내**: 복제 창 닫기 → `Alt+R` 리로드 → 리로드 시 자동 정리
 - **커밋**: `e285bcb` (푸시 포함)
+
+## #19 · 2026-09-12 · E07 Omnibox + 검색 무응답 수정
+
+- **요청**: "다음 진행" → 중단 → "다음 진행 해줘 검색해도 검색이 안되" + 스크린샷(팝업에 "google" 입력 시 결과 없음)
+- **E07 수행**:
+  - `src/core/omniboxSuggest.ts`(순수): `encodeTarget/parseTarget`(`ctm:tab:<rowId>` / `ctm:topic:<id>`), `escapeXml`, `matchRanges`(토큰별 대소문자 무시 리터럴 매칭·병합), `highlight`(`<match>`), `suggestionFor`(주제: 이름·탭 수·상태 / 탭: 제목 + `<url>`host · 주제 · 저장됨), `buildSuggestions`(중복 content 제거, 6개), `defaultDescription`, `targetOf`
+  - `src/chrome/omnibox.ts`: `onInputStarted/onInputChanged/onInputEntered/onInputCancelled` 연결, 세대 카운터로 늦은 응답 무시, 기본 제안 선택 시 최상위 검색 결과로 이동
+  - `wxt.config.ts`: `omnibox: { keyword: 't' }`; `background.ts`: `registerOmnibox` 연결(검색은 SW 인덱스, 활성화는 `CommandRunner.focus`)
+  - 테스트 16건 추가(`omniboxSuggest.test.ts`) → 총 196/196
+- **검색 무응답 원인**: `wxt.config.ts`에 omnibox를 추가했지만 실행 중인 dev 서버가 dev manifest를 재생성하지 않음(02:18 manifest). 새 background.js(09:45)는 `browser.omnibox.onInputStarted.addListener`를 호출 → `chrome.omnibox` undefined → SW 시작 중 TypeError → 그 뒤에 등록되는 `runtime.onMessage` 리스너가 빠짐 → 팝업 `sendMessage`가 undefined 응답 → `res.type` 접근 예외 → "결과 없음". storage LevelDB를 직접 읽어 데이터는 정상임을 먼저 확인
+- **수정**:
+  - `chrome/omnibox.ts`: `browser.omnibox` 없으면 로그 후 skip. `background.ts`: `registerOmnibox`를 try/catch로 감싸 메시지 리스너 등록을 보장
+  - 팝업 `App.tsx`: `send()`가 undefined 응답이면 "백그라운드가 응답하지 않습니다 — 확장 새로고침" 오류 throw, `refresh/loadContext`에서 오류를 화면에 표시(더 이상 조용히 "결과 없음" 아님)
+  - dev 서버 재시작(PID 42956 종료 → `pnpm dev` 백그라운드, 포트 3000) → dev manifest에 omnibox 반영 확인
+- **검증**: 테스트 196/196, typecheck·lint·build 통과. 프로덕션 manifest에 `"omnibox":{"keyword":"t"}` 확인
+- **결정/교훈**: manifest(`wxt.config.ts`) 변경 시 dev 서버 재시작 필수. 선택적 Chrome API는 존재 여부를 확인하고 등록. CLAUDE.md에 기록
+- **미검증**: 실기기에서 `t` + 키워드 → 제안 표시·Enter 전환, 팝업 검색 복구 — 사용자 확인 대기
+- **커밋**: 미커밋
+
+## #20 · 2026-09-12 · 팝업 빈 화면 → 정적 빌드 운영으로 전환
+
+- **요청**: 스크린샷(팝업이 검은 사각형만 표시) + "검색창이 안나옴"
+- **원인**: dev 서버 재시작으로 포트가 3001→3000으로 바뀌었는데 Chrome이 든 확장은 옛 manifest(CSP localhost:3001) → 팝업 스크립트 로드 차단 → 빈 화면. 곧이어 백그라운드로 띄운 dev 서버가 **시스템 메모리 부족으로 강제 종료**(free 1.1 GB, Chrome 64 프로세스 3.1 GB, 커밋 29.7/39.7 GB)
+- **조치**:
+  - dev 서버 의존을 제거: 프로덕션 빌드를 Chrome이 이미 로드한 `.output/chrome-mv3-dev` 폴더에 복사 → 확장 ID·storage 데이터 유지, localhost 참조 0
+  - `scripts/sync-static.mjs` + `pnpm static`(= `wxt build && node scripts/sync-static.mjs`) 추가
+  - 발견: `fs.cpSync({recursive:true})`가 이 환경(Node 24.14.1, 한글 사용자 경로)에서 네이티브 크래시(0xC0000409, bash exit 127) → `readdirSync`/`copyFileSync` 수동 복사로 우회
+  - 남아 있던 wxt 프로세스(PID 52492) 종료로 메모리 확보
+- **결정**: 이 머신에서는 수동 테스트 루프를 `pnpm static` → chrome://extensions ↻ 로 고정. dev 서버(HMR)는 선택. CLAUDE.md에 기록
+- **사용자 조치 안내**: chrome://extensions에서 확장 새로고침(↻) → 팝업·검색 확인
+- **커밋**: 미커밋
+
+## #21 · 2026-09-12 · 진단 줄로 원인 확정 · 이름 붙은 복제 주제 흡수
+
+- **요청**: 스크린샷 3장 — (1) 검색 결과 없음 → (2) 진단 줄 없이 동일 → (3) 새 SW 적용 후 검색 정상, 그러나 저장된 "Dev _info"(35탭)를 선택하면 창이 열리는 대신 35탭 새 창이 생성되고 느려짐. 진단 줄: 주제 3/19 · 탭 56/554 · 색인 145 · 창 3 · 라이브탭 56 · seq 32 · 저장 253KB
+- **경과**:
+  - 팝업 파일은 디스크에서 즉시 읽히지만 서비스워커는 확장 새로고침 시에만 교체됨 → 새 팝업이 옛 SW에 `debug.stats`를 보내 "unknown message"를 받았고, 팝업이 그 오류를 숨김 → 진단 오류도 표시하도록 수정. storage 사용량(KB) 추가
+  - `Repo.init`: meta 키가 없어도 컬렉션에 데이터가 있으면 절대 지우지 않고 meta만 재작성 (테스트 추가)
+  - 확장 새로고침 후 진단 정상 표시, 검색 동작 확인. 09:42 이후 쓰기 없음은 옛 SW가 죽어 있던 결과였음
+- **버그 원인**: #18의 정리 로직이 **이름 없는** 복제만 삭제 → 사용자가 이름 붙인 옛 복제("Dev _info", "DEV_Info")가 saved로 남고, 선택 시 복원 로직이 새 창 생성
+- **수정**:
+  - `TopicService.openDuplicateOf` / `absorbIfDuplicate`: 열린 창과 Jaccard ≥ 0.8인 저장 주제는 이름 여부와 무관하게 흡수 — 열린 주제가 이름 없음이면 이름 상속(중복 이름 충돌 시 생략), 복제 삭제. `dropDuplicateSavedTopics`가 이를 사용
+  - `CommandRunner.restoreTopic`: 새 창 생성 전에 `absorbIfDuplicate` → 겹치면 기존 창 id 반환(이중 안전장치)
+  - 테스트: reload 2건(이름 상속, 이름 유지), commandRunner 1건(복제 선택 → createWindow 없이 focus) → 총 200/200
+- **결정**: 열린 창의 복제 저장본은 사용자 데이터가 아니라 리로드 잔재로 간주(라이브 창이 같은 탭을 전부 가짐). 이름만 승계
+- **사용자 조치 안내**: 확장 새로고침 → 리로드 시 남은 복제("Dev _info" 등)가 자동 흡수됨. 이후 저장 목록에서 선택해도 기존 창으로 이동
+- **커밋**: 미커밋
+
+## #22 · 2026-09-12 · E08 Side Panel 개요 + 하위 그룹 (F-03, F-11 Side Panel)
+
+- **요청**: "다음 진행" (E08)
+- **수행**:
+  - `core/liveState.ts`: `LiveGroup`(id, windowId, title, color, collapsed), `state.groups`, 이벤트 `group.created/updated/removed`, init에 `groups`, 창 제거 시 그룹 제거, `groupsOf()`
+  - `chrome/events.ts`: `tabGroups.on*` 구독(권한 없거나 fake일 때 안전하게 건너뜀), `loadInitialState`가 `tabGroups.query({})` 포함, `toLiveGroup`
+  - `core/topicService.ts`: `Subgroup` 행 관리 — `onGroupUpsert`(chromeGroupId→없으면 이름으로 매칭, 탭 재바인딩), `onGroupRemoved`(열린 탭 남아 있으면 삭제=사용자가 그룹 해제, 전부 닫혔으면 창 닫힘으로 보고 이름·색 보존), `syncGroupsOfWindow`(reconcile), `rowFor`가 `LiveTab.groupId`로 `subgroupId` 부여, `toSaved`에서 chromeGroupId 해제, `setColor()`, `tree()`(주제→하위 그룹→탭), `toTopicColor`, `sameRow`에 subgroupId 포함
+  - `core/messages.ts` / `background.ts`: `sidepanel.tree`, `topic.setColor`
+  - `entrypoints/sidepanel/`(Solid): 열린 주제 카드(현재 창 강조, 접기, 색상 점→팔레트, 이름 인라인 편집, 탭 수, ↗ 창 이동), 하위 그룹 블록(색 테두리), 탭 행 클릭→이동, **드래그 앤 드롭으로 다른 주제 카드에 놓으면 `cmd.move`**, 저장된 주제 섹션(⤴ 복원), 탭/창 이벤트로 300ms 디바운스 자동 갱신
+  - 팝업 하단 "사이드 패널" 링크(`sidePanel.open({windowId})`, 사용자 제스처 내)
+  - manifest: 권한 `tabGroups`, `sidePanel`, `side_panel.default_path`
+  - 테스트 9건 추가(liveState 그룹 2, events 그룹 매핑 1, topicService 그룹 6) → 총 209/209. typecheck·lint·build 통과. fake-browser의 tabGroups 이벤트는 stub으로 대체
+- **결정**: EXT는 Chrome Tab Group을 **읽기만** 한다(생성·변경 0, 계획서 DoD). 주제 색상은 UI 배지로만 쓰고 그룹 색을 강제하지 않음. 그룹 제거 이벤트의 의미(해제 vs 창 닫힘)는 남은 열린 탭 유무로 판별
+- **미검증**: 실기기에서 그룹 표시, 드래그 이동, 색상·이름 편집, 창 닫힘 후 저장 주제에 그룹 이름 보존 — 사용자 확인 대기
+- **커밋**: 미커밋 (E07·버그 수정 2건과 함께 예정. EM3 완료 태그 `ext-v0.3.0`은 E07 기준)
+
+## #23 · 2026-09-12 · 사용자 피드백: "검색·목록은 현재 열린 창·탭 기준이어야" → 보존 정책 변경
+
+- **요청**: 사이드 패널 스크린샷 — 이미 닫힌 창("file://C:", 36탭, 이름 없음)이 저장된 주제로 계속 표시됨. "모든 검색 대상이나 설정 대상은 현재 열려진 창과 탭을 기준으로 해야 함" → 이어서 "사용자 입장을 고려한 UI/UX 정책으로 전환, 분류 정책을 다시 추천"
+- **원인**: E04 정책이 창을 닫으면 이름 유무와 무관하게 saved 주제로 보존 → 자동 이름 주제가 닫힐 때마다 누적되어 검색·패널에 노출
+- **수정 (코드)**:
+  - `TopicService.toSaved`: **이름 지정 주제만** saved로 보존, 이름 없는 주제는 창과 함께 삭제
+  - `reconcile`: 남아 있는 이름 없는 saved 주제 전부 정리(레거시)
+  - 검색 범위 `open` 추가 — 팝업·Omnibox 기본 범위를 `open`(현재 열린 창·탭)으로. 저장 항목은 `@saved`·`#주제`로만
+  - `autoName`: file://·chrome:// 등 비웹 페이지는 탭 제목 사용, 여러 탭이면 웹 host만 집계 ("file://C:" 이름 제거)
+  - 테스트 갱신·추가 → 213/213, typecheck·lint·build 통과, 정적 빌드 반영
+- **정책 추천은 별도 답변으로 제시(사용자 확정 대기)**. 확정 시 기능정의서 v0.3로 반영 예정
+- **커밋**: 미커밋
+
+## #24 · 2026-09-12 · 정책 v0.3 확정: 주제 수명 = 창 수명, 저장된 주제 폐지
+
+- **요청**: "아무리 지정 주제라도 현재 열려있지 않은 윈도우는 필요없고… 사진처럼 과거 이미 사라진 그룹들이 동일한 그룹으로 너무 많아" / "닫혀 버린 예전 기록이 같이 남아 있어 이건 싹 다 지워야지" (스크린샷: 저장된 주제 16개, 이름 붙은 잔재 3개)
+- **결정 (사용자)**: 열려 있지 않은 창의 주제는 이름 유무와 무관하게 **전부 삭제**. "저장된 주제" 개념 폐지. 검색·팝업·사이드 패널은 현재 열린 창·탭만
+- **수행**:
+  - `TopicService.toSaved` → 항상 `deleteTopic`(탭·하위 그룹 cascade). `reconcile`: 잔존 `saved` 주제 전부 삭제(현재 창과 Jaccard ≥ 0.8이면 `absorbIfDuplicate`로 이름만 승계 후 삭제). `adoptWindow` 제거
+  - `CommandRunner`: `restoreTopic` 제거, `focus`/`move`는 열린 주제만(`requireOpenTopic`), `restored` 필드 제거
+  - `command.ts`: `open`/`save` 커맨드와 `@saved` 모드 제거 (남은 커맨드 move/new/rename/close/merge). 팝업 힌트·케이스, 사이드 패널 "저장된 주제" 섹션, `cmd.open` 메시지 제거
+  - 검색 기본 범위 `open`(팝업·Omnibox). `autoName`: file://·chrome://는 탭 제목 사용
+  - 테스트 정리: adopt 테스트 파일 삭제, 복원 관련 4건 삭제, 창 닫힘·재시작·그룹·명령 테스트를 새 정책으로 갱신 → 205/205. typecheck·lint·build 통과, 정적 빌드 반영
+  - 문서: 기능정의서 v0.3(변경 이력, §1.5, 용어, F-09/F-12), DEV_PLAN E11 범위 축소, CLAUDE.md, README
+- **트레이드오프 기록**: 실수로 창을 닫으면 주제(이름·색·그룹)는 사라지고 탭은 Chrome "최근 닫은 탭"에만 남음. 브라우저 재시작은 Chrome 세션 복원 + 지문 재연결로 이름 유지
+- **사용자 조치**: 확장 새로고침(↻) → 잔재 16개 전부 정리, 이름 붙은 잔재가 현재 창과 같은 탭 구성이면 그 이름이 창에 붙음
+- **커밋**: 미커밋

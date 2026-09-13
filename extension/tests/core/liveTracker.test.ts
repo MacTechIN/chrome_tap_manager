@@ -82,7 +82,12 @@ describe('LiveTracker', () => {
 
   it('restores seq from session storage so the cursor keeps increasing across restarts', async () => {
     const kv = new MemoryKV();
-    await kv.set(LIVE_STATE_KEY, { seq: 120, windows: {}, tabs: {} } satisfies LiveState);
+    await kv.set(LIVE_STATE_KEY, {
+      seq: 120,
+      windows: {},
+      tabs: {},
+      groups: {},
+    } satisfies LiveState);
     const tracker = new LiveTracker({
       kv,
       persistDelayMs: 0,

@@ -49,20 +49,28 @@ export function nextUnnamed(existingNames: Iterable<string>): string {
  * Provisional name for a window from its tabs.
  * Returns `undefined` when no tab yields a usable label (caller keeps the placeholder).
  */
+function isWebUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url.trim());
+}
+
 export function nameFromTabs(tabs: readonly NameSource[]): string | undefined {
   if (tabs.length === 0) return undefined;
 
   if (tabs.length === 1) {
     const t = tabs[0]!;
-    const site = siteName(t.url);
+    // Web pages → site; local/internal pages ("file://C:", "chrome://…") read badly → use the title.
+    const site = isWebUrl(t.url) ? siteName(t.url) : undefined;
     if (site) return truncate(site);
     const title = truncate(t.title);
-    return title || undefined;
+    if (title) return title;
+    const fallback = siteName(t.url);
+    return fallback ? truncate(fallback) : undefined;
   }
 
   const counts = new Map<string, number>();
   const order: string[] = [];
   for (const t of tabs) {
+    if (!isWebUrl(t.url)) continue;
     const site = siteName(t.url);
     if (!site) continue;
     if (!counts.has(site)) order.push(site);

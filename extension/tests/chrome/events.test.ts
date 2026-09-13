@@ -31,12 +31,24 @@ function makeEvent<F extends (...args: never[]) => void>(): TriggerableEvent<F> 
     trigger: (...args) => listeners.forEach((fn) => fn(...args)),
   };
 }
+type GroupListener = (g: chrome.tabGroups.TabGroup) => void;
 function installMissingTabEvents() {
   const tabs = fakeBrowser.tabs as unknown as Record<string, unknown>;
   tabs.onMoved = makeEvent<(tabId: number, info: chrome.tabs.OnMovedInfo) => void>();
   tabs.onAttached = makeEvent<(tabId: number, info: chrome.tabs.OnAttachedInfo) => void>();
   tabs.onDetached = makeEvent<(tabId: number, info: chrome.tabs.OnDetachedInfo) => void>();
+  // fake-browser's tabGroups events throw "not implemented"; replace them with triggerable ones.
+  (fakeBrowser as unknown as Record<string, unknown>).tabGroups = {
+    onCreated: makeEvent<GroupListener>(),
+    onUpdated: makeEvent<GroupListener>(),
+    onMoved: makeEvent<GroupListener>(),
+    onRemoved: makeEvent<GroupListener>(),
+    query: async () => [],
+  };
 }
+const groupEvents = () =>
+  (fakeBrowser as unknown as { tabGroups: Record<string, TriggerableEvent<GroupListener>> })
+    .tabGroups;
 const extraTabEvents = () => ({
   onMoved: fakeBrowser.tabs.onMoved as unknown as TriggerableEvent<
     (tabId: number, info: chrome.tabs.OnMovedInfo) => void
@@ -211,6 +223,37 @@ describe('subscribeChromeEvents (fake browser triggers)', () => {
       windowId: 20,
       isWindowClosing: false,
     });
+  });
+
+  it('tab group events map to group.created/updated/removed', () => {
+    const { events, off } = capture();
+    const g = {
+      id: 7,
+      windowId: 10,
+      title: 'Docs',
+      color: 'green',
+      collapsed: false,
+    } as chrome.tabGroups.TabGroup;
+    groupEvents().onCreated!.trigger(g);
+    groupEvents().onUpdated!.trigger({ ...g, title: 'Ref', collapsed: true });
+    groupEvents().onMoved!.trigger({ ...g, windowId: 11 });
+    groupEvents().onRemoved!.trigger(g);
+    off();
+    expect(events).toEqual([
+      {
+        type: 'group.created',
+        group: { id: 7, windowId: 10, title: 'Docs', color: 'green', collapsed: false },
+      },
+      {
+        type: 'group.updated',
+        group: { id: 7, windowId: 10, title: 'Ref', color: 'green', collapsed: true },
+      },
+      {
+        type: 'group.updated',
+        group: { id: 7, windowId: 11, title: 'Docs', color: 'green', collapsed: false },
+      },
+      { type: 'group.removed', groupId: 7 },
+    ]);
   });
 
   it('tab.updated with no relevant changes is dropped', () => {

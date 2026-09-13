@@ -123,15 +123,17 @@ describe('TopicService: init / reconcile', () => {
     expect(h.topicOf(10)).toMatchObject({ id: before, name: 'Dev', status: 'open' });
     expect(h.repo.listTabs({ topicId: before }).map((r) => r.chromeTabId)).toEqual([1]);
     expect(h.topicOf(30)).toMatchObject({ status: 'open', name: 'site30.com' });
-    const saved = h.topics().filter((t) => t.status === 'saved');
-    expect(saved).toHaveLength(1);
-    expect(saved[0]!.name).toBe('site20.com');
-    expect(h.repo.listTabs({ topicId: saved[0]!.id })).toMatchObject([
-      { chromeTabId: undefined, isOpen: false, url: 'https://site20.com/p/3' },
-    ]);
+    // Window 20 is gone → its topic is gone (nothing is kept for closed windows).
+    expect(h.topics().filter((t) => t.status === 'saved')).toEqual([]);
+    expect(
+      h
+        .topics()
+        .map((t) => t.windowId)
+        .sort(),
+    ).toEqual([10, 30]);
   });
 
-  it('fresh session: stored open topics are saved (windowIds are stale) and live windows get new topics', async () => {
+  it('fresh session: a stale open topic with no matching window is dropped; live windows get new topics', async () => {
     // Previous browser session left an open topic on windowId 10 with a tab.
     const fresh = new Harness();
     h = fresh;
@@ -164,12 +166,12 @@ describe('TopicService: init / reconcile', () => {
       },
     });
 
-    await h.emit(INIT); // new session also has a window with id 10
-    const old = h.repo.getTopic('old')!;
-    expect(old).toMatchObject({ status: 'saved', windowId: undefined });
-    expect(h.repo.getTab('oldtab')).toMatchObject({ isOpen: false, chromeTabId: undefined });
+    await h.emit(INIT); // new session also has a window with id 10, but different tabs
+    expect(h.repo.getTopic('old')).toBeUndefined();
+    expect(h.repo.getTab('oldtab')).toBeUndefined();
     expect(h.topicOf(10)!.id).not.toBe('old');
-    expect(h.topics().filter((t) => t.status === 'open')).toHaveLength(2);
+    expect(h.topics()).toHaveLength(2);
+    expect(h.topics().every((t) => t.status === 'open')).toBe(true);
   });
 });
 
@@ -202,27 +204,19 @@ describe('TopicService: window lifecycle', () => {
     expect(h.topicOf(30)!.name).toBe('b.com'); // recomputed: most common host
   });
 
-  it('closing a window → saved topic with its tab list preserved', async () => {
+  it('closing an unnamed window drops its topic and tabs (nothing lingers)', async () => {
     const id = h.topicOf(10)!.id;
     await h.emit(...h.closeWindowEvents(10));
-    expect(h.repo.getTopic(id)).toMatchObject({ status: 'saved', windowId: undefined });
-    const rows = h.repo.listTabs({ topicId: id });
-    expect(rows).toHaveLength(2);
-    expect(rows.every((r) => !r.isOpen && r.chromeTabId === undefined)).toBe(true);
-    expect(rows.map((r) => r.url)).toEqual(['https://site10.com/p/1', 'https://site10.com/p/2']);
+    expect(h.repo.getTopic(id)).toBeUndefined();
+    expect(h.repo.listTabs({ topicId: id })).toEqual([]);
   });
 
-  it('closing an unnamed window with no tabs deletes the topic; a named one is kept', async () => {
-    await h.emit({ type: 'window.created', window: { id: 30, focused: false } });
-    const unnamedId = h.topicOf(30)!.id;
-    await h.emit({ type: 'window.removed', windowId: 30 });
-    expect(h.repo.getTopic(unnamedId)).toBeUndefined();
-
-    await h.emit({ type: 'window.created', window: { id: 40, focused: false } });
-    const namedId = h.topicOf(40)!.id;
-    await h.service.rename(namedId, 'Keep me');
-    await h.emit({ type: 'window.removed', windowId: 40 });
-    expect(h.repo.getTopic(namedId)).toMatchObject({ status: 'saved', name: 'Keep me' });
+  it('closing a named window also drops the topic (topic lifetime = window lifetime)', async () => {
+    const id = h.topicOf(10)!.id;
+    await h.service.rename(id, 'Keep');
+    await h.emit(...h.closeWindowEvents(10));
+    expect(h.repo.getTopic(id)).toBeUndefined();
+    expect(h.repo.listTabs({ topicId: id })).toEqual([]);
   });
 
   it('focus changes update lastActiveAt of the focused topic', async () => {
@@ -340,24 +334,17 @@ describe('TopicService: rename / deleteSaved / listTopics', () => {
     await expect(h.service.rename('nope', 'x')).rejects.toBeInstanceOf(TopicError);
   });
 
-  it('deleteSaved only deletes saved topics (cascades tab rows)', async () => {
+  it('deleteSaved refuses open topics (there are no saved topics any more)', async () => {
     const id = h.topicOf(10)!.id;
     await expect(h.service.deleteSaved(id)).rejects.toMatchObject({ code: 'topic.notSaved' });
-    await h.service.rename(id, 'Dev');
-    await h.emit(...h.closeWindowEvents(10));
-    await h.service.deleteSaved(id);
-    expect(h.repo.getTopic(id)).toBeUndefined();
-    expect(h.repo.listTabs({ topicId: id })).toEqual([]);
+    await expect(h.service.deleteSaved('nope')).rejects.toMatchObject({ code: 'topic.notFound' });
   });
 
-  it('listTopics: open first (most recent first), then saved; with tab counts', async () => {
+  it('listTopics: most recently active first, with tab counts; closed windows are absent', async () => {
     await h.emit({ type: 'window.focused', windowId: 20 });
     await h.emit(...h.closeWindowEvents(10));
     const list = h.service.listTopics();
-    expect(list.map((t) => [t.status, t.name, t.tabCount])).toEqual([
-      ['open', 'site20.com', 1],
-      ['saved', 'site10.com', 2],
-    ]);
+    expect(list.map((t) => [t.status, t.name, t.tabCount])).toEqual([['open', 'site20.com', 1]]);
   });
 });
 

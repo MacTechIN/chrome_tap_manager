@@ -1,8 +1,7 @@
 // core/commandRunner.ts — executes search-box actions (spec F-02, F-08, part of F-09).
 // Chrome side effects go through the injected `ChromeActions`; state through Repo/TopicService.
 
-import { normalizeUrl } from './fingerprint';
-import type { MoveLogEntry, Tab, Topic } from './model';
+import type { MoveLogEntry, Topic } from './model';
 import type { Repo } from './repo';
 import { TopicError, type TopicService } from './topicService';
 
@@ -27,14 +26,12 @@ export type FocusTarget =
 export interface FocusResult {
   windowId: number;
   chromeTabId?: number;
-  restored: boolean;
 }
 
 export interface MoveResult {
   topicId: string;
   windowId: number;
   moved: number;
-  restored: boolean;
 }
 
 export interface CommandRunnerOptions {
@@ -64,90 +61,45 @@ export class CommandRunner {
   /**
    * mode 'tab'    : activate the tab, then focus its window
    * mode 'window' : focus the window only (keep its active tab)
-   * Saved targets are restored into a new window first.
+   * Targets must be open: a topic lives only while its window exists.
    */
   async focus(target: FocusTarget, mode: 'tab' | 'window' = 'tab'): Promise<FocusResult> {
     if (target.kind === 'chromeTab') {
       if (mode === 'tab') await this.actions.activateTab(target.chromeTabId);
       await this.actions.focusWindow(target.windowId);
-      return { windowId: target.windowId, chromeTabId: target.chromeTabId, restored: false };
+      return { windowId: target.windowId, chromeTabId: target.chromeTabId };
     }
 
     if (target.kind === 'topic') {
-      const topic = this.requireTopic(target.topicId);
-      if (topic.status === 'open' && topic.windowId !== undefined) {
-        await this.actions.focusWindow(topic.windowId);
-        return { windowId: topic.windowId, restored: false };
-      }
-      const windowId = await this.restoreTopic(topic.id);
-      await this.actions.focusWindow(windowId);
-      return { windowId, restored: true };
+      const topic = this.requireOpenTopic(target.topicId);
+      await this.actions.focusWindow(topic.windowId);
+      return { windowId: topic.windowId };
     }
 
     const row = this.repo.getTab(target.tabRowId);
     if (!row) throw new TopicError('topic.notFound', '탭을 찾을 수 없습니다');
-    const topic = this.requireTopic(row.topicId);
-
-    if (row.isOpen && row.chromeTabId !== undefined && topic.windowId !== undefined) {
-      if (mode === 'tab') await this.actions.activateTab(row.chromeTabId);
-      await this.actions.focusWindow(topic.windowId);
-      return { windowId: topic.windowId, chromeTabId: row.chromeTabId, restored: false };
+    const topic = this.requireOpenTopic(row.topicId);
+    if (!row.isOpen || row.chromeTabId === undefined) {
+      throw new TopicError('topic.notFound', '이미 닫힌 탭입니다');
     }
-
-    // Saved tab: restore its topic (or open it in the topic's live window) and activate by URL.
-    let windowId: number;
-    let restored = false;
-    if (topic.status === 'open' && topic.windowId !== undefined) {
-      windowId = topic.windowId;
-    } else {
-      windowId = await this.restoreTopic(topic.id);
-      restored = true;
-    }
-    const live = await this.actions.tabsOfWindow(windowId);
-    const want = normalizeUrl(row.url);
-    const match = live.find((t) => normalizeUrl(t.url) === want);
-    if (match && mode === 'tab') await this.actions.activateTab(match.id);
-    await this.actions.focusWindow(windowId);
-    return { windowId, chromeTabId: match?.id, restored };
-  }
-
-  // ---- restore (saved topic → window) -----------------------------------------
-
-  async restoreTopic(topicId: string): Promise<number> {
-    const topic = this.requireTopic(topicId);
-    if (topic.status === 'open' && topic.windowId !== undefined) return topic.windowId;
-
-    const urls = this.savedTabs(topicId).map((t) => t.url);
-    const windowId = await this.actions.createWindow({
-      urls: urls.length > 0 ? urls : undefined,
-      focused: true,
-    });
-    await this.actions.waitForWindow(windowId);
-    await this.service.adoptWindow(topicId, windowId);
-    this.log?.('topic restored', { topicId, windowId, tabs: urls.length });
-    return windowId;
+    if (mode === 'tab') await this.actions.activateTab(row.chromeTabId);
+    await this.actions.focusWindow(topic.windowId);
+    return { windowId: topic.windowId, chromeTabId: row.chromeTabId };
   }
 
   // ---- move / new / rename --------------------------------------------------------
 
-  /** Send tabs to a topic's window (restoring it if saved). */
+  /** Send tabs to a topic's window. */
   async move(opts: {
     topicId: string;
     chromeTabIds: number[];
     switchTo?: boolean;
   }): Promise<MoveResult> {
-    const topic = this.requireTopic(opts.topicId);
+    const topic = this.requireOpenTopic(opts.topicId);
     if (opts.chromeTabIds.length === 0)
       throw new TopicError('topic.notFound', '보낼 탭이 없습니다');
 
-    let windowId: number;
-    let restored = false;
-    if (topic.status === 'open' && topic.windowId !== undefined) {
-      windowId = topic.windowId;
-    } else {
-      windowId = await this.restoreTopic(topic.id);
-      restored = true;
-    }
+    const windowId = topic.windowId;
 
     // Skip tabs that are already in the target window.
     const targetRows = new Set(
@@ -162,7 +114,7 @@ export class CommandRunner {
     this.lastMoveTopicId = topic.id;
     if (opts.switchTo) await this.actions.focusWindow(windowId);
     this.log?.('tabs moved', { topicId: topic.id, windowId, moved: toMove.length });
-    return { topicId: topic.id, windowId, moved: toMove.length, restored };
+    return { topicId: topic.id, windowId, moved: toMove.length };
   }
 
   /** Split tabs into a new window (= new topic), optionally naming it. */
@@ -202,17 +154,13 @@ export class CommandRunner {
 
   // ---- helpers -------------------------------------------------------------------
 
-  private requireTopic(id: string): Topic {
+  private requireOpenTopic(id: string): Topic & { windowId: number } {
     const t = this.repo.getTopic(id);
     if (!t) throw new TopicError('topic.notFound', '주제를 찾을 수 없습니다');
-    return t;
-  }
-
-  private savedTabs(topicId: string): Tab[] {
-    return this.repo
-      .listTabs({ topicId })
-      .filter((t) => !t.isOpen)
-      .sort((a, b) => a.index - b.index);
+    if (t.status !== 'open' || t.windowId === undefined) {
+      throw new TopicError('topic.notFound', '열려 있지 않은 주제입니다');
+    }
+    return t as Topic & { windowId: number };
   }
 
   private async logMoves(chromeTabIds: number[], topicId: string): Promise<void> {

@@ -1,0 +1,290 @@
+:root {
+  color-scheme: light dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Apple SD Gothic Neo',
+    'Malgun Gothic',
+    sans-serif;
+  font-size: 13px;
+  --line: color-mix(in srgb, currentColor 14%, transparent);
+  --sel: color-mix(in srgb, currentColor 10%, transparent);
+  --muted: color-mix(in srgb, currentColor 60%, transparent);
+  --c-grey: #8e8e93;
+  --c-blue: #4a8df8;
+  --c-red: #e0443e;
+  --c-yellow: #f2c037;
+  --c-green: #3bb273;
+  --c-pink: #e8619a;
+  --c-purple: #9b5de5;
+  --c-cyan: #2bb5c8;
+  --c-orange: #f28c28;
+}
+
+body {
+  margin: 0;
+}
+
+.panel {
+  padding: 10px 10px 16px;
+}
+
+h1 {
+  font-size: 14px;
+  margin: 0 0 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  margin: 14px 0 6px;
+}
+
+.muted {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.refresh {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.topic {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 6px 6px;
+  margin-bottom: 8px;
+}
+
+.topic.current {
+  border-color: color-mix(in srgb, var(--c-blue) 60%, transparent);
+}
+
+.topic.saved {
+  opacity: 0.8;
+}
+
+.topic.drop {
+  background: var(--sel);
+  border-style: dashed;
+}
+
+.topic header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+}
+
+.chev,
+.go {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font: inherit;
+}
+
+.go:hover {
+  color: inherit;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  cursor: text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.name.unnamed {
+  font-weight: normal;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.rename {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+}
+
+.count {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  padding: 0;
+  cursor: pointer;
+  flex: 0 0 12px;
+  background: transparent;
+}
+
+.dot.active {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.dot.grey {
+  background: var(--c-grey);
+}
+.dot.blue {
+  background: var(--c-blue);
+}
+.dot.red {
+  background: var(--c-red);
+}
+.dot.yellow {
+  background: var(--c-yellow);
+}
+.dot.green {
+  background: var(--c-green);
+}
+.dot.pink {
+  background: var(--c-pink);
+}
+.dot.purple {
+  background: var(--c-purple);
+}
+.dot.cyan {
+  background: var(--c-cyan);
+}
+.dot.orange {
+  background: var(--c-orange);
+}
+
+.palette {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0 6px 22px;
+}
+
+.palette .dot {
+  width: 16px;
+  height: 16px;
+  flex-basis: 16px;
+}
+
+.topic ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 4px;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--sel);
+}
+
+.tab.closed {
+  opacity: 0.6;
+}
+
+.tab .title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fav {
+  flex: 0 0 14px;
+}
+
+.fav-fallback {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--line);
+}
+
+.subgroup {
+  margin: 4px 0 2px 4px;
+  border-left: 3px solid var(--c-grey);
+  padding-left: 6px;
+}
+
+.ghead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.subgroup .ghead.blue,
+.subgroup:has(.ghead.blue) {
+  border-color: var(--c-blue);
+}
+.subgroup:has(.ghead.red) {
+  border-color: var(--c-red);
+}
+.subgroup:has(.ghead.yellow) {
+  border-color: var(--c-yellow);
+}
+.subgroup:has(.ghead.green) {
+  border-color: var(--c-green);
+}
+.subgroup:has(.ghead.pink) {
+  border-color: var(--c-pink);
+}
+.subgroup:has(.ghead.purple) {
+  border-color: var(--c-purple);
+}
+.subgroup:has(.ghead.cyan) {
+  border-color: var(--c-cyan);
+}
+.subgroup:has(.ghead.orange) {
+  border-color: var(--c-orange);
+}
+
+.gname {
+  font-weight: 600;
+}
+
+.error {
+  color: #d33;
+  font-size: 12px;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 12px;
+}

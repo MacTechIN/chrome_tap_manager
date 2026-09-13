@@ -28,10 +28,20 @@ export interface LiveWindow {
   tabIds: number[];
 }
 
+/** A Chrome tab group (chrome.tabGroups). Read-only mirror; the extension never creates groups. */
+export interface LiveGroup {
+  id: number;
+  windowId: number;
+  title: string;
+  color: string;
+  collapsed: boolean;
+}
+
 export interface LiveState {
   seq: number;
   windows: Record<number, LiveWindow>;
   tabs: Record<number, LiveTab>;
+  groups: Record<number, LiveGroup>;
   focusedWindowId?: number;
 }
 
@@ -46,7 +56,10 @@ export type TabChanges = Partial<
 >;
 
 export type LiveEvent =
-  | { type: 'init'; windows: LiveWindowInput[] }
+  | { type: 'init'; windows: LiveWindowInput[]; groups?: LiveGroup[] }
+  | { type: 'group.created'; group: LiveGroup }
+  | { type: 'group.updated'; group: LiveGroup }
+  | { type: 'group.removed'; groupId: number }
   | { type: 'window.created'; window: { id: number; focused: boolean } }
   | { type: 'window.removed'; windowId: number }
   | { type: 'window.focused'; windowId: number | undefined }
@@ -59,7 +72,7 @@ export type LiveEvent =
   | { type: 'tab.activated'; tabId: number; windowId: number };
 
 export function emptyLiveState(seq = 0): LiveState {
-  return { seq, windows: {}, tabs: {} };
+  return { seq, windows: {}, tabs: {}, groups: {} };
 }
 
 /**
@@ -72,6 +85,7 @@ export function reduce(state: LiveState, event: LiveEvent): LiveState {
     seq: state.seq + 1,
     windows: { ...state.windows },
     tabs: { ...state.tabs },
+    groups: { ...(state.groups ?? {}) },
     focusedWindowId: state.focusedWindowId,
   };
 
@@ -79,6 +93,7 @@ export function reduce(state: LiveState, event: LiveEvent): LiveState {
     case 'init': {
       next.windows = {};
       next.tabs = {};
+      next.groups = {};
       next.focusedWindowId = undefined;
       for (const w of event.windows) {
         const sorted = [...w.tabs].sort((a, b) => a.index - b.index);
@@ -88,6 +103,21 @@ export function reduce(state: LiveState, event: LiveEvent): LiveState {
         });
         if (w.focused) next.focusedWindowId = w.id;
       }
+      for (const g of event.groups ?? []) {
+        if (next.windows[g.windowId]) next.groups[g.id] = { ...g };
+      }
+      return next;
+    }
+
+    case 'group.created':
+    case 'group.updated': {
+      if (!next.windows[event.group.windowId]) return next;
+      next.groups[event.group.id] = { ...event.group };
+      return next;
+    }
+
+    case 'group.removed': {
+      delete next.groups[event.groupId];
       return next;
     }
 
@@ -106,6 +136,9 @@ export function reduce(state: LiveState, event: LiveEvent): LiveState {
       const w = next.windows[event.windowId];
       if (!w) return next;
       for (const id of w.tabIds) delete next.tabs[id];
+      for (const g of Object.values(next.groups)) {
+        if (g.windowId === event.windowId) delete next.groups[g.id];
+      }
       delete next.windows[event.windowId];
       if (next.focusedWindowId === event.windowId) next.focusedWindowId = undefined;
       return next;
@@ -244,6 +277,12 @@ export function tabsOf(state: LiveState, windowId: number): LiveTab[] {
 
 export function activeTabOf(state: LiveState, windowId: number): LiveTab | undefined {
   return tabsOf(state, windowId).find((t) => t.active);
+}
+
+export function groupsOf(state: LiveState, windowId: number): LiveGroup[] {
+  return Object.values(state.groups ?? {})
+    .filter((g) => g.windowId === windowId)
+    .sort((a, b) => a.id - b.id);
 }
 
 export function counts(state: LiveState): { windows: number; tabs: number } {

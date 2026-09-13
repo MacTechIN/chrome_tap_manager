@@ -8,9 +8,39 @@
 
 import { autoName, nameFromTabs, nextUnnamed } from './autoName';
 import { fingerprint } from './fingerprint';
-import { type LiveEvent, type LiveState, type LiveTab, tabsOf } from './liveState';
-import { type Tab, type Topic, TOPIC_NAME_MAX, topicNameKey } from './model';
+import {
+  groupsOf,
+  type LiveEvent,
+  type LiveGroup,
+  type LiveState,
+  type LiveTab,
+  tabsOf,
+} from './liveState';
+import {
+  type Subgroup,
+  type Tab,
+  type Topic,
+  TOPIC_NAME_MAX,
+  type TopicColor,
+  topicNameKey,
+} from './model';
 import type { Repo } from './repo';
+
+const TOPIC_COLORS: readonly TopicColor[] = [
+  'grey',
+  'blue',
+  'red',
+  'yellow',
+  'green',
+  'pink',
+  'purple',
+  'cyan',
+  'orange',
+];
+
+export function toTopicColor(c: string | undefined): TopicColor | undefined {
+  return (TOPIC_COLORS as readonly string[]).includes(c ?? '') ? (c as TopicColor) : undefined;
+}
 
 export type TopicErrorCode =
   'topic.notFound' | 'topic.notSaved' | 'name.empty' | 'name.tooLong' | 'name.duplicate';
@@ -34,6 +64,46 @@ export interface TopicSummary {
   color?: Topic['color'];
   tabCount: number;
   lastActiveAt: number;
+}
+
+export interface TreeTab {
+  id: string;
+  title: string;
+  url: string;
+  favicon?: string;
+  chromeTabId?: number;
+  isOpen: boolean;
+  index: number;
+  subgroupId?: string;
+  lastActiveAt: number;
+}
+
+export interface TreeSubgroup {
+  id: string;
+  name: string;
+  color?: TopicColor;
+  collapsed: boolean;
+  tabs: TreeTab[];
+}
+
+export interface TopicTree extends TopicSummary {
+  subgroups: TreeSubgroup[];
+  /** Tabs not in any subgroup. */
+  tabs: TreeTab[];
+}
+
+function toTreeTab(t: Tab): TreeTab {
+  return {
+    id: t.id,
+    title: t.title,
+    url: t.url,
+    favicon: t.favicon,
+    chromeTabId: t.chromeTabId,
+    isOpen: t.isOpen,
+    index: t.index,
+    subgroupId: t.subgroupId,
+    lastActiveAt: t.lastActiveAt,
+  };
 }
 
 export interface TopicServiceOptions {
@@ -100,8 +170,95 @@ export class TopicService {
         case 'tab.activated':
           await this.onTabActivated(event.tabId, event.windowId);
           break;
+        case 'group.created':
+        case 'group.updated':
+          await this.onGroupUpsert(event.group, state);
+          break;
+        case 'group.removed':
+          await this.onGroupRemoved(event.groupId);
+          break;
       }
     });
+  }
+
+  // ---- sub-groups (Chrome tab groups, read-only mirror; spec F-03) ----------------
+
+  /** Subgroup row for a live Chrome group, matched by chromeGroupId, else by name within the topic. */
+  private findSubgroup(topicId: string, live: LiveGroup): Subgroup | undefined {
+    const rows = this.repo.listSubgroups(topicId);
+    return (
+      rows.find((g) => g.chromeGroupId === live.id) ??
+      rows.find((g) => g.chromeGroupId === undefined && g.name === live.title)
+    );
+  }
+
+  private subgroupIdFor(topicId: string, chromeGroupId: number | undefined): string | undefined {
+    if (chromeGroupId === undefined) return undefined;
+    return this.repo.listSubgroups(topicId).find((g) => g.chromeGroupId === chromeGroupId)?.id;
+  }
+
+  private async onGroupUpsert(live: LiveGroup, state: LiveState): Promise<void> {
+    if (!state.windows[live.windowId]) return;
+    const topic = await this.ensureTopicForWindow(live.windowId, state);
+    const existing = this.findSubgroup(topic.id, live);
+    const row: Subgroup = {
+      id: existing?.id ?? this.repo.newId(),
+      topicId: topic.id,
+      name: live.title,
+      color: toTopicColor(live.color),
+      chromeGroupId: live.id,
+      collapsed: live.collapsed,
+    };
+    if (
+      !existing ||
+      existing.topicId !== row.topicId ||
+      existing.name !== row.name ||
+      existing.color !== row.color ||
+      existing.chromeGroupId !== row.chromeGroupId ||
+      existing.collapsed !== row.collapsed
+    ) {
+      await this.repo.putSubgroup(row);
+    }
+    // Tabs may have joined the group before we knew it: re-bind their subgroupId.
+    await this.syncTabsOfWindow(topic, live.windowId, state);
+  }
+
+  /**
+   * A group vanished. If it still has open tabs the user ungrouped them → delete the
+   * subgroup. If all its tabs are closed the window is closing → keep the subgroup
+   * (name/color survive in the saved topic) but drop the Chrome id.
+   */
+  private async onGroupRemoved(chromeGroupId: number): Promise<void> {
+    const row = this.repo.listSubgroups().find((g) => g.chromeGroupId === chromeGroupId);
+    if (!row) return;
+    const tabs = this.repo
+      .listTabs({ topicId: row.topicId })
+      .filter((t) => t.subgroupId === row.id);
+    if (tabs.length === 0 || tabs.some((t) => t.isOpen)) {
+      await this.repo.deleteSubgroup(row.id);
+      return;
+    }
+    await this.repo.putSubgroup({ ...row, chromeGroupId: undefined });
+  }
+
+  /** Reconcile subgroup rows of an open topic with the live groups of its window. */
+  private async syncGroupsOfWindow(
+    topic: Topic,
+    windowId: number,
+    state: LiveState,
+  ): Promise<void> {
+    const live = groupsOf(state, windowId);
+    const liveIds = new Set(live.map((g) => g.id));
+    for (const g of live) await this.onGroupUpsert(g, state);
+    for (const row of this.repo.listSubgroups(topic.id)) {
+      if (row.chromeGroupId !== undefined && !liveIds.has(row.chromeGroupId)) {
+        const tabs = this.repo
+          .listTabs({ topicId: topic.id })
+          .filter((t) => t.subgroupId === row.id);
+        if (tabs.length === 0) await this.repo.deleteSubgroup(row.id);
+        else await this.repo.putSubgroup({ ...row, chromeGroupId: undefined });
+      }
+    }
   }
 
   // ---- reconcile (init / resync) ------------------------------------------
@@ -137,6 +294,7 @@ export class TopicService {
 
     for (const windowId of liveWindowIds) {
       const topic = await this.ensureTopicForWindow(windowId, state);
+      await this.syncGroupsOfWindow(topic, windowId, state);
       await this.syncTabsOfWindow(topic, windowId, state);
     }
 
@@ -148,6 +306,15 @@ export class TopicService {
     }
 
     await this.dropDuplicateSavedTopics();
+
+    // Legacy cleanup: `saved` topics from earlier versions. Duplicates of open windows were
+    // absorbed above (their names carried over); whatever is left has no window → drop.
+    for (const t of this.repo.listTopics()) {
+      if (t.status === 'saved') {
+        await this.repo.deleteTopic(t.id);
+        this.log?.('saved topic purged (no window)', { id: t.id, name: t.name });
+      }
+    }
 
     this.lastFocusedWindowId = state.focusedWindowId;
     this.log?.('topics reconciled', {
@@ -205,20 +372,66 @@ export class TopicService {
    * Unnamed saved topics that duplicate an open window (≥ DUPLICATE_MIN_JACCARD overlap)
    * are artifacts of earlier reloads — remove them. Named ones are the user's data: keep.
    */
+  /**
+   * Saved topics that duplicate an open window (≥ DUPLICATE_MIN_JACCARD overlap) are
+   * artifacts of earlier reloads. They are absorbed into the open topic: an unnamed open
+   * topic inherits the duplicate's name, then the duplicate is deleted. Restoring such a
+   * copy would open a second identical window (user-reported bug).
+   */
   private async dropDuplicateSavedTopics(): Promise<void> {
-    const topics = this.repo.listTopics();
-    const openFps = topics
-      .filter((t) => t.status === 'open')
-      .map((t) => this.topicFingerprints(t.id));
-    for (const t of topics) {
-      if (t.status !== 'saved' || t.isNamed) continue;
-      const fps = this.topicFingerprints(t.id);
-      if (fps.size === 0) continue;
-      if (openFps.some((o) => jaccard(fps, o) >= DUPLICATE_MIN_JACCARD)) {
-        await this.repo.deleteTopic(t.id);
-        this.log?.('duplicate saved topic dropped', { id: t.id, name: t.name });
-      }
+    for (const s of this.repo.listTopics()) {
+      if (s.status !== 'saved') continue;
+      await this.absorbIfDuplicate(s.id);
     }
+  }
+
+  /** The open topic whose window this saved topic duplicates, if any. */
+  openDuplicateOf(savedTopicId: string): Topic | undefined {
+    const saved = this.repo.getTopic(savedTopicId);
+    if (!saved || saved.status !== 'saved') return undefined;
+    const fps = this.topicFingerprints(saved.id);
+    if (fps.size === 0) return undefined;
+    let best: { topic: Topic; score: number } | undefined;
+    for (const o of this.repo.listTopics()) {
+      if (o.status !== 'open') continue;
+      const score = jaccard(fps, this.topicFingerprints(o.id));
+      if (score >= DUPLICATE_MIN_JACCARD && (!best || score > best.score))
+        best = { topic: o, score };
+    }
+    return best?.topic;
+  }
+
+  /**
+   * If `savedTopicId` duplicates an open window, merge it into that open topic and return
+   * the open topic; otherwise return undefined and leave everything untouched.
+   */
+  async absorbIfDuplicate(savedTopicId: string): Promise<Topic | undefined> {
+    const open = this.openDuplicateOf(savedTopicId);
+    if (!open) return undefined;
+    return this.repo.batch(async () => {
+      const saved = this.repo.getTopic(savedTopicId)!;
+      let target = this.repo.getTopic(open.id)!;
+      if (saved.isNamed && !target.isNamed) {
+        const key = topicNameKey(saved.name);
+        const clash = this.repo
+          .listTopics()
+          .find(
+            (t) =>
+              t.id !== saved.id && t.id !== target.id && t.isNamed && topicNameKey(t.name) === key,
+          );
+        if (!clash) {
+          target = { ...target, name: saved.name, isNamed: true, updatedAt: this.repo.now() };
+          await this.repo.putTopic(target);
+        }
+      }
+      await this.repo.deleteTopic(saved.id);
+      this.log?.('duplicate saved topic absorbed', {
+        saved: saved.name,
+        into: target.name,
+        windowId: target.windowId,
+      });
+      return target;
+    });
   }
 
   private topicFingerprints(topicId: string): Set<string> {
@@ -241,6 +454,44 @@ export class TopicService {
 
     const now = this.repo.now();
     return this.repo.putTopic({ ...topic, name, isNamed: true, updatedAt: now });
+  }
+
+  async setColor(topicId: string, color: TopicColor | undefined): Promise<Topic> {
+    const topic = this.repo.getTopic(topicId);
+    if (!topic) throw new TopicError('topic.notFound');
+    const next: Topic = { ...topic, updatedAt: this.repo.now() };
+    if (color === undefined) delete next.color;
+    else next.color = color;
+    return this.repo.putTopic(next);
+  }
+
+  /** Tree for the side panel: open topics first, each with its subgroups and tabs. */
+  tree(): TopicTree[] {
+    const subgroupsByTopic = new Map<string, Subgroup[]>();
+    for (const g of this.repo.listSubgroups()) {
+      const list = subgroupsByTopic.get(g.topicId) ?? [];
+      list.push(g);
+      subgroupsByTopic.set(g.topicId, list);
+    }
+    return this.listTopics().map((summary) => {
+      const tabs = this.repo
+        .listTabs({ topicId: summary.id })
+        .sort((a, b) => a.index - b.index)
+        .map(toTreeTab);
+      const groups = (subgroupsByTopic.get(summary.id) ?? []).map((g) => ({
+        id: g.id,
+        name: g.name,
+        color: g.color,
+        collapsed: g.collapsed,
+        tabs: tabs.filter((t) => t.subgroupId === g.id),
+      }));
+      const grouped = new Set(groups.flatMap((g) => g.tabs.map((t) => t.id)));
+      return {
+        ...summary,
+        subgroups: groups,
+        tabs: tabs.filter((t) => !grouped.has(t.id)),
+      };
+    });
   }
 
   async deleteSaved(topicId: string): Promise<void> {
@@ -276,46 +527,6 @@ export class TopicService {
     return this.repo.findTopicByWindow(windowId);
   }
 
-  /**
-   * Re-link a saved topic to a freshly created window (restore). If the window
-   * already got an auto-created topic (event raced ahead of us), merge that topic
-   * into the saved one. Closed rows of the saved topic are dropped: the window was
-   * created from them and live tab events re-create the rows.
-   */
-  async adoptWindow(topicId: string, windowId: number): Promise<Topic> {
-    return this.repo.batch(async () => {
-      const topic = this.repo.getTopic(topicId);
-      if (!topic) throw new TopicError('topic.notFound');
-      if (topic.status === 'open' && topic.windowId === windowId) return topic;
-      if (topic.status === 'open') {
-        throw new TopicError('topic.notSaved', '이미 다른 창에 열려 있는 주제입니다');
-      }
-      const now = this.repo.now();
-
-      for (const row of this.repo.listTabs({ topicId })) {
-        if (!row.isOpen) await this.repo.deleteTab(row.id);
-      }
-
-      const auto = this.repo.findTopicByWindow(windowId);
-      if (auto && auto.id !== topicId) {
-        const rows = this.repo.listTabs({ topicId: auto.id }).map((r) => ({ ...r, topicId }));
-        if (rows.length > 0) await this.repo.putTabs(rows);
-        await this.repo.deleteTopic(auto.id);
-      }
-
-      const adopted: Topic = {
-        ...topic,
-        status: 'open',
-        windowId,
-        lastActiveAt: now,
-        updatedAt: now,
-      };
-      await this.repo.putTopic(adopted);
-      this.log?.('topic adopted window', { topicId, windowId, merged: auto?.id });
-      return adopted;
-    });
-  }
-
   // ---- internals: topics ---------------------------------------------------
 
   private async ensureTopicForWindow(windowId: number, state: LiveState): Promise<Topic> {
@@ -342,20 +553,20 @@ export class TopicService {
     return topic;
   }
 
-  private async toSaved(topic: Topic, now: number): Promise<void> {
-    const rows = this.repo.listTabs({ topicId: topic.id });
-    const closed = rows
-      .filter((r) => r.isOpen)
-      .map((r) => ({ ...r, isOpen: false, chromeTabId: undefined, updatedAt: now }));
-    if (closed.length > 0) await this.repo.putTabs(closed);
-
-    if (!topic.isNamed && rows.length === 0) {
-      await this.repo.deleteTopic(topic.id);
-      this.log?.('unnamed empty topic dropped', { id: topic.id });
-      return;
-    }
-    await this.repo.putTopic({ ...topic, status: 'saved', windowId: undefined, updatedAt: now });
-    this.log?.('topic saved', { id: topic.id, name: topic.name, tabs: rows.length });
+  /**
+   * A window went away. Only topics the user named survive as `saved`; an unnamed
+   * (auto-named) topic is dropped with its tab list — otherwise every closed window
+   * lingers in search and the side panel (user feedback 2026-09-12).
+   */
+  /**
+   * A window went away → its topic goes with it (tabs and subgroups cascade).
+   * Product decision 2026-09-12: a topic lives exactly as long as its window; nothing is
+   * kept for windows that are not open, named or not. (Chrome's own session restore
+   * brings windows back after a restart, and `reconcile` re-links them by fingerprint.)
+   */
+  private async toSaved(topic: Topic, _now: number): Promise<void> {
+    await this.repo.deleteTopic(topic.id);
+    this.log?.('topic dropped with its window', { id: topic.id, name: topic.name });
   }
 
   private async onWindowRemoved(windowId: number): Promise<void> {
@@ -418,7 +629,7 @@ export class TopicService {
       title: live.title,
       favicon: live.favicon,
       chromeTabId: live.id,
-      subgroupId: existing?.subgroupId,
+      subgroupId: this.subgroupIdFor(topicId, live.groupId),
       index: live.index,
       isOpen: true,
       lastActiveAt: existing?.lastActiveAt ?? now,
@@ -546,6 +757,7 @@ function sameRow(a: Tab, b: Tab): boolean {
     a.favicon === b.favicon &&
     a.chromeTabId === b.chromeTabId &&
     a.index === b.index &&
-    a.isOpen === b.isOpen
+    a.isOpen === b.isOpen &&
+    a.subgroupId === b.subgroupId
   );
 }

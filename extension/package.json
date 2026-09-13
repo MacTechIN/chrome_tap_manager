@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
-    "postinstall": "wxt prepare"
+    "postinstall": "wxt prepare",
+    "static": "wxt build && node scripts/sync-static.mjs"
   },
   "dependencies": {
     "es-hangul": "2.4.0",

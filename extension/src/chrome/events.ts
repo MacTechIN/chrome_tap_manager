@@ -2,7 +2,7 @@
 // core LiveEvent objects. No state here; the reducer in core/liveState.ts owns it.
 
 import { browser } from '#imports';
-import type { LiveEvent, LiveTab, LiveWindowInput, TabChanges } from '../core/liveState';
+import type { LiveEvent, LiveGroup, LiveTab, LiveWindowInput, TabChanges } from '../core/liveState';
 
 type ChromeTab = chrome.tabs.Tab;
 type ChromeWindow = chrome.windows.Window;
@@ -39,10 +39,34 @@ export function toLiveWindowInput(w: ChromeWindow): LiveWindowInput | undefined 
 }
 
 /** Full snapshot of all normal windows, as an 'init' event. */
+export function toLiveGroup(g: chrome.tabGroups.TabGroup): LiveGroup {
+  return {
+    id: g.id,
+    windowId: g.windowId,
+    title: g.title ?? '',
+    color: g.color,
+    collapsed: g.collapsed,
+  };
+}
+
+/** chrome.tabGroups exists only with the "tabGroups" permission (E08+); older builds/fakes lack it. */
+function tabGroupsApi(): typeof chrome.tabGroups | undefined {
+  return (browser as unknown as { tabGroups?: typeof chrome.tabGroups }).tabGroups;
+}
+
 export async function loadInitialState(): Promise<LiveEvent> {
   const all = await browser.windows.getAll({ populate: true, windowTypes: ['normal'] });
   const windows = all.map(toLiveWindowInput).filter((w): w is LiveWindowInput => w !== undefined);
-  return { type: 'init', windows };
+  const api = tabGroupsApi();
+  let groups: LiveGroup[] | undefined;
+  if (api) {
+    try {
+      groups = (await api.query({})).map(toLiveGroup);
+    } catch {
+      groups = undefined;
+    }
+  }
+  return { type: 'init', windows, groups };
 }
 
 /**
@@ -129,7 +153,37 @@ export function subscribeChromeEvents(dispatch: (e: LiveEvent) => void): () => v
   browser.tabs.onDetached.addListener(onTabDetached);
   browser.tabs.onActivated.addListener(onTabActivated);
 
+  const groupsApi = tabGroupsApi();
+  const onGroupCreated = (g: chrome.tabGroups.TabGroup) =>
+    dispatch({ type: 'group.created', group: toLiveGroup(g) });
+  const onGroupUpdated = (g: chrome.tabGroups.TabGroup) =>
+    dispatch({ type: 'group.updated', group: toLiveGroup(g) });
+  const onGroupMoved = (g: chrome.tabGroups.TabGroup) =>
+    dispatch({ type: 'group.updated', group: toLiveGroup(g) });
+  const onGroupRemoved = (g: chrome.tabGroups.TabGroup) =>
+    dispatch({ type: 'group.removed', groupId: g.id });
+  // Group events are optional (permission may be absent; test fakes are partial): never let
+  // them break window/tab tracking.
+  let groupsSubscribed = false;
+  if (groupsApi) {
+    try {
+      groupsApi.onCreated.addListener(onGroupCreated);
+      groupsApi.onUpdated.addListener(onGroupUpdated);
+      groupsApi.onMoved.addListener(onGroupMoved);
+      groupsApi.onRemoved.addListener(onGroupRemoved);
+      groupsSubscribed = true;
+    } catch {
+      groupsSubscribed = false;
+    }
+  }
+
   return () => {
+    if (groupsApi && groupsSubscribed) {
+      groupsApi.onCreated.removeListener(onGroupCreated);
+      groupsApi.onUpdated.removeListener(onGroupUpdated);
+      groupsApi.onMoved.removeListener(onGroupMoved);
+      groupsApi.onRemoved.removeListener(onGroupRemoved);
+    }
     browser.windows.onCreated.removeListener(onWindowCreated);
     browser.windows.onRemoved.removeListener(onWindowRemoved);
     browser.windows.onFocusChanged.removeListener(onWindowFocus);

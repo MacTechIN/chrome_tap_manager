@@ -7,8 +7,12 @@ export default defineConfig({
   manifest: {
     name: 'Chrome Tap Manager',
     description: '작업마다 창 하나, 이름 하나. 창이 곧 주제가 되고, 검색 한 번으로 그 창을 앞으로.',
-    // E01 scope. Later steps add: tabGroups, sidePanel (E08), nativeMessaging (E10), omnibox (E07).
-    permissions: ['tabs', 'storage', 'commands', 'contextMenus'],
+    // Later: nativeMessaging (E10).
+    permissions: ['tabs', 'storage', 'commands', 'contextMenus', 'tabGroups', 'sidePanel'],
+    // Address bar: type "t" + space, then a keyword (E07).
+    omnibox: { keyword: 't' },
+    // Side panel: topic → sub-group → tab tree (E08). Opened from the popup footer.
+    side_panel: { default_path: 'sidepanel.html' },
     commands: {
       _execute_action: {
         suggested_key: { default: 'Ctrl+Shift+Space', mac: 'Alt+Space' },

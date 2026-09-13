@@ -20,8 +20,7 @@ describe('parseInput', () => {
     expect(parseInput('  react hooks ')).toEqual({ mode: 'search', text: 'react hooks' });
   });
 
-  it('@saved and #topic modes', () => {
-    expect(parseInput('@saved rust')).toEqual({ mode: 'saved', text: 'rust' });
+  it('#topic mode', () => {
     expect(parseInput('#프로젝트A github')).toEqual({
       mode: 'topic',
       topicQuery: '프로젝트A',
@@ -43,13 +42,13 @@ describe('parseInput', () => {
     expect(parseInput('>move  프로젝트A ')).toMatchObject({ command: 'move', arg: '프로젝트A' });
     expect(parseInput('>M')).toMatchObject({ command: undefined, partial: 'm' }); // move | merge
     expect(parseInput('>m x')).toMatchObject({ command: undefined, partial: 'm', arg: 'x' });
-    expect(parseInput('>save')).toMatchObject({ command: 'save', arg: '' });
+    expect(parseInput('>close')).toMatchObject({ command: 'close', arg: '' });
   });
 });
 
 describe('matchCommands / suggestCommands', () => {
   it('prefix completion', () => {
-    expect(matchCommands('')).toHaveLength(7);
+    expect(matchCommands('')).toHaveLength(5);
     expect(matchCommands('m')).toEqual(['move', 'merge']);
     expect(matchCommands('re')).toEqual(['rename']);
     expect(matchCommands('zz')).toEqual([]);
@@ -57,16 +56,7 @@ describe('matchCommands / suggestCommands', () => {
 
   it('">" lists all commands; ">mo" narrows', () => {
     const all = suggestCommands(parseInput('>') as never, TOPICS);
-    expect(all.map((s) => s.command)).toEqual([
-      'move',
-      'new',
-      'rename',
-      'open',
-      'close',
-      'save',
-      'merge',
-    ]);
-    expect(all.find((s) => s.command === 'save')!.complete).toBe(true);
+    expect(all.map((s) => s.command)).toEqual(['move', 'new', 'rename', 'close', 'merge']);
     expect(all.find((s) => s.command === 'move')!.complete).toBe(false);
 
     const mo = suggestCommands(parseInput('>mo') as never, TOPICS);
@@ -85,12 +75,6 @@ describe('matchCommands / suggestCommands', () => {
     expect(s.find((x) => x.topic?.id === 'b')).toBeUndefined();
     const s2 = suggestCommands(parseInput('>move ㅊㄹ') as never, TOPICS, { currentTopicId: 'a' });
     expect(s2[0]!.topic?.id).toBe('b');
-  });
-
-  it('">open" offers saved topics only', () => {
-    const s = suggestCommands(parseInput('>open ') as never, TOPICS);
-    expect(s.map((x) => x.topic?.id)).toEqual(['c', 'd']);
-    expect(s[0]!.description).toContain('저장됨');
   });
 
   it('">close" offers current window first, then topics', () => {
