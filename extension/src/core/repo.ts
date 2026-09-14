@@ -58,8 +58,49 @@ export interface InitResult {
 }
 
 type Migration = (store: Store) => Store;
-/** index i migrates from version i+1 → i+2. Empty until a schema change happens. */
-const MIGRATIONS: Migration[] = [];
+/** index i migrates from version i+1 → i+2. */
+const MIGRATIONS: Migration[] = [
+  // v1 → v2: rules and move-log entries were keyed by topicId; they are now keyed by
+  // topic name (topics die with their windows). Entries whose topic is gone are dropped.
+  (store) => {
+    const nameOf = new Map(store.topics.map((t) => [t.id, t.name] as const));
+    type OldRule = Omit<Rule, 'topicName' | 'createdAt'> & {
+      topicId?: string;
+      topicName?: string;
+      createdAt?: number;
+    };
+    type OldMove = Omit<MoveLogEntry, 'topicName'> & { topicId?: string; topicName?: string };
+    const rules: Rule[] = [];
+    for (const r of store.rules as unknown as OldRule[]) {
+      const topicName = r.topicName ?? (r.topicId ? nameOf.get(r.topicId) : undefined);
+      if (!topicName) continue;
+      rules.push({
+        id: r.id,
+        topicName,
+        kind: r.kind,
+        pattern: r.pattern,
+        priority: r.priority,
+        source: r.source,
+        enabled: r.enabled,
+        undoCount: r.undoCount,
+        createdAt: r.createdAt ?? 0,
+      });
+    }
+    const moveLog: MoveLogEntry[] = [];
+    for (const m of store.moveLog as unknown as OldMove[]) {
+      const topicName = m.topicName ?? (m.topicId ? nameOf.get(m.topicId) : undefined);
+      if (!topicName) continue;
+      moveLog.push({
+        id: m.id,
+        host: m.host,
+        pathPrefix: m.pathPrefix,
+        topicName,
+        movedAt: m.movedAt,
+      });
+    }
+    return { ...store, rules, moveLog };
+  },
+];
 
 export interface TabFilter {
   topicId?: string;
@@ -205,7 +246,7 @@ export class Repo {
     return topic;
   }
 
-  /** Deletes the topic and cascades to its tabs, subgroups, rules and move-log entries. */
+  /** Deletes the topic and cascades to its tabs and subgroups (rules/move-log are by name). */
   async deleteTopic(id: string): Promise<boolean> {
     this.assertReady();
     const before = this.cache.topics.length;
@@ -223,16 +264,7 @@ export class Repo {
       this.cache.subgroups = subgroups;
       touched.push('subgroups');
     }
-    const rules = this.cache.rules.filter((r) => r.topicId !== id);
-    if (rules.length !== this.cache.rules.length) {
-      this.cache.rules = rules;
-      touched.push('rules');
-    }
-    const moveLog = this.cache.moveLog.filter((m) => m.topicId !== id);
-    if (moveLog.length !== this.cache.moveLog.length) {
-      this.cache.moveLog = moveLog;
-      touched.push('moveLog');
-    }
+    // rules / moveLog are keyed by topic name and outlive the topic on purpose.
 
     for (const c of touched) await this.flush(c);
     return true;

@@ -73,6 +73,10 @@ class World {
       return windowId;
     },
     waitForWindow: async () => {},
+    closeWindow: async (windowId) => {
+      this.calls.push(`closeWindow ${windowId}`);
+      await this.closeWindow(windowId);
+    },
     tabsOfWindow: async (windowId) =>
       (this.state.windows[windowId]?.tabIds ?? []).map((id) => ({
         id,
@@ -203,7 +207,7 @@ describe('CommandRunner.move / newTopic / rename / merge', () => {
     expect(w.calls).toEqual(['move [1] -> 20']);
     expect(w.repo.findTabByChromeId(1)!.topicId).toBe(target.id);
     expect(w.repo.listMoveLog()).toMatchObject([
-      { host: 'a.com', pathPrefix: '/1', topicId: target.id },
+      { host: 'a.com', pathPrefix: '/1', topicName: target.name },
     ]);
     expect(w.runner.lastMoveTopicId).toBe(target.id);
   });
@@ -246,6 +250,21 @@ describe('CommandRunner.move / newTopic / rename / merge', () => {
     const t = await w.runner.rename({ name: 'Front', windowId: 10 });
     expect(t).toMatchObject({ name: 'Front', windowId: 10 });
     await expect(w.runner.rename({ name: 'X', windowId: 999 })).rejects.toMatchObject({
+      code: 'topic.notFound',
+    });
+  });
+
+  it('close: by topic id or by window id; the topic disappears with the window', async () => {
+    const t20 = w.topicOf(20);
+    const r = await w.runner.close({ topicId: t20.id });
+    expect(r).toEqual({ topicId: t20.id, name: 'b.com', windowId: 20, tabs: 1 });
+    expect(w.calls).toEqual(['closeWindow 20']);
+    expect(w.repo.getTopic(t20.id)).toBeUndefined();
+
+    const t10 = w.topicOf(10);
+    await w.runner.close({ windowId: 10 });
+    expect(w.repo.getTopic(t10.id)).toBeUndefined();
+    await expect(w.runner.close({ windowId: 999 })).rejects.toMatchObject({
       code: 'topic.notFound',
     });
   });

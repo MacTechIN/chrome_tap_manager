@@ -1,8 +1,13 @@
 // core/messages.ts — typed runtime messages between popup/sidepanel and the SW.
 
+import type { BridgeStatus } from '../bridge/client';
+import type { AutoMove, UndoResult } from './autoMover';
+import type { ImportResult } from './exportImport';
 import type { FocusResult, FocusTarget, MoveResult } from './commandRunner';
 import type { LiveState } from './liveState';
-import type { Topic, TopicColor } from './model';
+import type { Rule, RuleKind, Topic, TopicColor } from './model';
+import type { RuleSuggestion } from './ruleSuggest';
+import type { Settings } from './settings';
 import type { SearchHit, SearchScope } from './search/index';
 import type { TopicErrorCode, TopicSummary, TopicTree } from './topicService';
 
@@ -25,7 +30,24 @@ export type RuntimeRequest =
   | { type: 'cmd.move'; topicId: string; chromeTabIds: number[]; switchTo?: boolean }
   | { type: 'cmd.new'; chromeTabIds: number[]; name?: string }
   | { type: 'cmd.rename'; name: string; topicId?: string; windowId?: number }
-  | { type: 'cmd.merge'; topicId: string; fromWindowId: number };
+  | { type: 'cmd.merge'; topicId: string; fromWindowId: number }
+  | { type: 'cmd.close'; topicId?: string; windowId?: number }
+  | { type: 'data.export' }
+  | { type: 'data.import'; text: string }
+  | { type: 'data.reset' }
+  | { type: 'rules.list' }
+  | { type: 'rules.put'; kind: RuleKind; pattern: string; topicName: string; id?: string }
+  | { type: 'rules.toggle'; id: string; enabled: boolean }
+  | { type: 'rules.delete'; id: string }
+  | { type: 'rules.suggestions' }
+  | { type: 'rules.accept'; key: string }
+  | { type: 'rules.dismiss'; key: string }
+  | { type: 'settings.get' }
+  | { type: 'settings.update'; patch: Partial<Settings> }
+  | { type: 'automove.recent'; withinMs?: number }
+  | { type: 'automove.undo'; id: string }
+  | { type: 'bridge.status' }
+  | { type: 'bridge.reconnect' };
 
 export interface LiveGetResponse {
   type: 'live.state';
@@ -86,7 +108,62 @@ export interface DebugStatsResponse {
   errors: string[];
 }
 
+export interface RulesListResponse {
+  type: 'rules.list';
+  rules: Rule[];
+}
+
+export interface SuggestionsResponse {
+  type: 'rules.suggestions';
+  suggestions: RuleSuggestion[];
+}
+
+export interface SettingsResponse {
+  type: 'settings';
+  settings: Settings;
+}
+
+export interface AutoMovesResponse {
+  type: 'automove.recent';
+  moves: AutoMove[];
+}
+
+export interface UndoResponse {
+  type: 'automove.undo';
+  result: UndoResult;
+}
+
+export interface CloseResponse {
+  type: 'close';
+  result: { topicId: string; name: string; windowId: number; tabs: number };
+}
+
+export interface ExportResponse {
+  type: 'data.export';
+  text: string;
+  filename: string;
+}
+
+export interface ImportResponse {
+  type: 'data.import';
+  result: ImportResult;
+}
+
+export interface BridgeStatusResponse {
+  type: 'bridge.status';
+  status: BridgeStatus;
+}
+
 export type RuntimeResponse =
+  | CloseResponse
+  | ExportResponse
+  | ImportResponse
+  | BridgeStatusResponse
+  | RulesListResponse
+  | SuggestionsResponse
+  | SettingsResponse
+  | AutoMovesResponse
+  | UndoResponse
   | LiveGetResponse
   | TopicsListResponse
   | DebugStatsResponse

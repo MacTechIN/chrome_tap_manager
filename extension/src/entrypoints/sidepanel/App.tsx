@@ -2,7 +2,7 @@ import { createResource, createSignal, For, onCleanup, onMount, Show } from 'sol
 import { browser } from '#imports';
 import { isCommitEnter } from '../../core/ime';
 import type { RuntimeRequest, RuntimeResponse } from '../../core/messages';
-import type { TopicColor } from '../../core/model';
+import type { Rule, RuleKind, TopicColor } from '../../core/model';
 import type { TopicTree, TreeTab } from '../../core/topicService';
 
 const COLORS: TopicColor[] = [
@@ -42,9 +42,82 @@ export default function App() {
   const [error, setError] = createSignal<string | undefined>();
   const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = createSignal<string | undefined>();
+  const [rules, setRules] = createSignal<Rule[]>([]);
+  const [bridgeState, setBridgeState] = createSignal<string>('');
+  const [rulesOpen, setRulesOpen] = createSignal(false);
+  const [rulesEnabled, setRulesEnabled] = createSignal(true);
+  const [newKind, setNewKind] = createSignal<RuleKind>('host');
+  const [newPattern, setNewPattern] = createSignal('');
+  const [newTopic, setNewTopic] = createSignal('');
+
+  async function loadRules() {
+    try {
+      const [r, st, b] = await Promise.all([
+        send({ type: 'rules.list' }),
+        send({ type: 'settings.get' }),
+        send({ type: 'bridge.status' }),
+      ]);
+      if (r.type === 'rules.list') setRules(r.rules);
+      if (st.type === 'settings') setRulesEnabled(st.settings.rulesEnabled);
+      if (b.type === 'bridge.status') setBridgeState(b.status.state);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function exportData() {
+    await run(async () => {
+      const res = await send({ type: 'data.export' });
+      if (res.type !== 'data.export') return;
+      const blob = new Blob([res.text], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+  }
+
+  async function importData(file: File | undefined) {
+    if (!file) return;
+    const text = await file.text();
+    await run(async () => {
+      const res = await send({ type: 'data.import', text });
+      if (res.type === 'data.import') {
+        setError(undefined);
+        alert(
+          `가져오기 완료: 규칙 ${res.result.rulesAdded}개 추가, ${res.result.rulesSkipped}개 건너뜀`,
+        );
+      }
+      await loadRules();
+    });
+  }
+
+  async function resetData() {
+    if (!confirm('주제 이름·색상·규칙·설정을 모두 지우고 현재 창을 다시 읽습니다. 계속할까요?'))
+      return;
+    await run(async () => {
+      await send({ type: 'data.reset' });
+      await loadRules();
+    });
+  }
+
+  const putRule = () =>
+    run(async () => {
+      const res = await send({
+        type: 'rules.put',
+        kind: newKind(),
+        pattern: newPattern(),
+        topicName: newTopic(),
+      });
+      if (res.type === 'rules.list') setRules(res.rules);
+      setNewPattern('');
+    });
 
   // Refresh when tabs/windows change (cheap: the SW answers from its cache).
   onMount(() => {
+    void loadRules();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const bump = () => {
       clearTimeout(timer);
@@ -242,6 +315,15 @@ export default function App() {
     <main class="panel">
       <h1>
         주제 <span class="muted">{open().length}</span>
+        <Show when={bridgeState() && bridgeState() !== 'stopped'}>
+          <span
+            class="bridge"
+            classList={{ on: bridgeState() === 'connected' }}
+            title="데스크톱 앱 연결 (Native Messaging)"
+          >
+            {bridgeState() === 'connected' ? '● 데스크톱 연결됨' : '○ 데스크톱 미연결'}
+          </span>
+        </Show>
         <a href="#" class="refresh" onClick={(e) => (e.preventDefault(), refetch())}>
           새로고침
         </a>
@@ -249,6 +331,129 @@ export default function App() {
       <Show when={data()} fallback={<p class="muted">불러오는 중…</p>}>
         <For each={open()}>{(t) => <TopicCard topic={t} />}</For>
       </Show>
+      <section class="rules">
+        <h2>
+          <button class="chev" onClick={() => setRulesOpen(!rulesOpen())}>
+            {rulesOpen() ? '▾' : '▸'}
+          </button>
+          규칙 <span class="muted">{rules().length}</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={rulesEnabled()}
+              onChange={(e) => {
+                const enabled = e.currentTarget.checked;
+                setRulesEnabled(enabled);
+                void run(() => send({ type: 'settings.update', patch: { rulesEnabled: enabled } }));
+              }}
+            />
+            자동 이동
+          </label>
+        </h2>
+        <Show when={rulesOpen()}>
+          <ul class="rule-list">
+            <For each={rules()}>
+              {(r) => (
+                <li classList={{ off: !r.enabled }}>
+                  <input
+                    type="checkbox"
+                    checked={r.enabled}
+                    title="사용"
+                    onChange={(e) =>
+                      void run(async () => {
+                        const res = await send({
+                          type: 'rules.toggle',
+                          id: r.id,
+                          enabled: e.currentTarget.checked,
+                        });
+                        if (res.type === 'rules.list') setRules(res.rules);
+                      })
+                    }
+                  />
+                  <span class="kind">{r.kind}</span>
+                  <span class="pattern" title={r.pattern}>
+                    {r.pattern}
+                  </span>
+                  <span class="arrow">→</span>
+                  <span class="target">{r.topicName}</span>
+                  <span class="muted small">{r.source === 'learned' ? '학습' : ''}</span>
+                  <button
+                    class="del"
+                    title="삭제"
+                    onClick={() =>
+                      void run(async () => {
+                        const res = await send({ type: 'rules.delete', id: r.id });
+                        if (res.type === 'rules.list') setRules(res.rules);
+                      })
+                    }
+                  >
+                    ×
+                  </button>
+                </li>
+              )}
+            </For>
+          </ul>
+          <div class="rule-add">
+            <select
+              value={newKind()}
+              onChange={(e) => setNewKind(e.currentTarget.value as RuleKind)}
+            >
+              <option value="host">host</option>
+              <option value="prefix">prefix</option>
+              <option value="regex">regex</option>
+            </select>
+            <input
+              placeholder="github.com 또는 github.com/MacTechIN"
+              value={newPattern()}
+              onInput={(e) => setNewPattern(e.currentTarget.value)}
+              onKeyDown={(e) => isCommitEnter(e) && void putRule()}
+            />
+            <input
+              placeholder="주제 이름"
+              list="topic-names"
+              value={newTopic()}
+              onInput={(e) => setNewTopic(e.currentTarget.value)}
+              onKeyDown={(e) => isCommitEnter(e) && void putRule()}
+            />
+            <datalist id="topic-names">
+              <For each={open()}>{(t) => <option value={t.name} />}</For>
+            </datalist>
+            <button onClick={() => void putRule()}>추가</button>
+          </div>
+          <p class="hint">
+            규칙은 주제 <b>이름</b>에 묶입니다. 그 이름의 창이 열려 있을 때만 동작하고, 직접 옮긴
+            탭은 건드리지 않습니다.
+          </p>
+        </Show>
+      </section>
+
+      <section class="data">
+        <h2>데이터</h2>
+        <div class="data-actions">
+          <button
+            onClick={() => void exportData()}
+            title="규칙·설정·현재 주제 스냅샷을 JSON으로 저장"
+          >
+            내보내기
+          </button>
+          <label class="file">
+            가져오기
+            <input
+              type="file"
+              accept="application/json,.json"
+              onChange={(e) => {
+                const f = e.currentTarget.files?.[0];
+                e.currentTarget.value = '';
+                void importData(f);
+              }}
+            />
+          </label>
+          <button class="danger" onClick={() => void resetData()} title="모든 저장 데이터 삭제">
+            초기화
+          </button>
+        </div>
+      </section>
+
       <Show when={error()}>{(e) => <p class="error">{e()}</p>}</Show>
       <p class="hint">
         탭을 끌어 다른 주제에 놓으면 그 창으로 이동합니다 · 이름·색상 클릭으로 편집

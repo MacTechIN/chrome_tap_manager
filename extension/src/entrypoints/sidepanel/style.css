@@ -288,3 +288,158 @@ h2 {
   color: var(--muted);
   margin-top: 12px;
 }
+
+.rules {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+.rules h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  opacity: 1;
+}
+
+.switch {
+  margin-left: auto;
+  font-weight: normal;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.rule-list {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+.rule-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  font-size: 12px;
+}
+
+.rule-list li.off {
+  opacity: 0.5;
+}
+
+.rule-list .kind {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--line);
+}
+
+.rule-list .pattern {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rule-list .arrow {
+  color: var(--muted);
+}
+
+.rule-list .target {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rule-list .del {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.rule-add {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr auto;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.rule-add input,
+.rule-add select,
+.rule-add button {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+}
+
+.small {
+  font-size: 11px;
+}
+
+.bridge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.bridge.on {
+  color: var(--c-green);
+}
+
+.bridge + .refresh {
+  margin-left: 8px;
+}
+
+.data {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+.data h2 {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  opacity: 1;
+}
+
+.data-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.data-actions button,
+.data-actions .file {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.data-actions .file input {
+  display: none;
+}
+
+.data-actions .danger {
+  color: #d33;
+  margin-left: auto;
+}

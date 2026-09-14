@@ -8,7 +8,9 @@ import {
   type TopicRef,
 } from '../../core/command';
 import { enterVariant, type EnterVariant } from '../../core/ime';
+import type { AutoMove } from '../../core/autoMover';
 import type { RuntimeRequest, RuntimeResponse } from '../../core/messages';
+import type { RuleSuggestion } from '../../core/ruleSuggest';
 import type { SearchHit, SearchScope } from '../../core/search/index';
 
 async function send(req: RuntimeRequest): Promise<RuntimeResponse> {
@@ -34,7 +36,59 @@ export default function App() {
   const [notice, setNotice] = createSignal<{ kind: 'info' | 'error'; text: string } | undefined>();
   const [busy, setBusy] = createSignal(false);
   const [stats, setStats] = createSignal<string>('');
+  const [suggestion, setSuggestion] = createSignal<RuleSuggestion | undefined>();
+  const [autoMove, setAutoMove] = createSignal<AutoMove | undefined>();
+  const [pendingClose, setPendingClose] = createSignal<
+    { topicId?: string; name: string; tabs: number } | undefined
+  >();
   const [bgErrors, setBgErrors] = createSignal<string[]>([]);
+
+  async function loadRuleContext() {
+    try {
+      const [sg, am] = await Promise.all([
+        send({ type: 'rules.suggestions' }),
+        send({ type: 'automove.recent', withinMs: 60_000 }),
+      ]);
+      setSuggestion(sg.type === 'rules.suggestions' ? sg.suggestions[0] : undefined);
+      setAutoMove(am.type === 'automove.recent' ? am.moves[0] : undefined);
+    } catch {
+      /* diagnostics line reports background trouble */
+    }
+  }
+
+  async function answerSuggestion(action: 'accept' | 'later' | 'never') {
+    const sg = suggestion();
+    if (!sg) return;
+    setSuggestion(undefined);
+    if (action === 'later') return;
+    await guard(async () => {
+      if (action === 'accept') {
+        expectOk(await send({ type: 'rules.accept', key: sg.key }));
+        setNotice({ kind: 'info', text: `규칙 추가: ${sg.pattern} → ${sg.topicName}` });
+      } else {
+        expectOk(await send({ type: 'rules.dismiss', key: sg.key }));
+      }
+    });
+  }
+
+  async function undoAutoMove() {
+    const m = autoMove();
+    if (!m) return;
+    setAutoMove(undefined);
+    await guard(async () => {
+      const res = expectOk(await send({ type: 'automove.undo', id: m.id }));
+      if (res.type === 'automove.undo' && res.result.ruleDisabled) {
+        setNotice({
+          kind: 'info',
+          text: `되돌렸습니다. 규칙 "${res.result.ruleDisabled.pattern}"은 3회 되돌려져 비활성화됐습니다`,
+        });
+      } else {
+        setNotice({ kind: 'info', text: '되돌렸습니다' });
+      }
+      await loadContext();
+      await refresh();
+    });
+  }
 
   async function loadStats() {
     try {
@@ -48,10 +102,21 @@ export default function App() {
         return;
       }
       const kb = res.bytesInUse === undefined ? '?' : Math.round(res.bytesInUse / 1024).toString();
+      let bridgeText = '';
+      try {
+        const b = await send({ type: 'bridge.status' });
+        if (b.type === 'bridge.status') {
+          const st = b.status.state;
+          bridgeText =
+            st === 'connected' ? ' · 브리지 연결됨' : st === 'stopped' ? '' : ' · 브리지 미연결';
+        }
+      } catch {
+        /* ignore */
+      }
       setStats(
         `주제 ${res.openTopics}/${res.topics} · 탭 ${res.openTabs}/${res.tabs} · 색인 ${res.indexSize}` +
           `${res.indexDirty ? '*' : ''} · 창 ${res.liveWindows} · 라이브탭 ${res.liveTabs} · seq ${res.seq}` +
-          ` · 저장 ${kb}KB${res.freshSession ? ' · 새 세션' : ''}`,
+          ` · 저장 ${kb}KB${res.freshSession ? ' · 새 세션' : ''}${bridgeText}`,
       );
       setBgErrors(res.errors);
     } catch (err) {
@@ -136,6 +201,7 @@ export default function App() {
     }
     await refresh();
     void loadStats();
+    void loadRuleContext();
   });
 
   createEffect(() => {
@@ -210,6 +276,7 @@ export default function App() {
           await loadContext();
           await refresh();
           done(`${n}개 탭을 "${s.topic!.name}"(으)로 보냈습니다`);
+          void loadRuleContext();
           return;
         }
         case 'new':
@@ -234,9 +301,18 @@ export default function App() {
             }),
           );
           return done();
-        case 'close':
-          setNotice({ kind: 'info', text: '>close는 E11에서 지원됩니다' });
+        case 'close': {
+          // Two-step: show what will be closed, close only on explicit confirmation.
+          const target = s.topic ?? topics().find((t) => t.windowId === currentWindowId());
+          if (!target) throw new Error('닫을 창의 주제를 찾을 수 없습니다');
+          const tree = await send({ type: 'sidepanel.tree' });
+          const tabs =
+            tree.type === 'sidepanel.tree'
+              ? (tree.topics.find((t) => t.id === target.id)?.tabCount ?? 0)
+              : 0;
+          setPendingClose({ topicId: target.id, name: target.name, tabs });
           return;
+        }
       }
     });
   }
@@ -288,6 +364,55 @@ export default function App() {
         onKeyDown={onKeyDown}
       />
 
+      <Show when={autoMove()}>
+        {(m) => (
+          <p class="banner">
+            <span>규칙이 탭을 "{m().toTopicName}"(으)로 보냈습니다</span>
+            <button onClick={() => void undoAutoMove()}>되돌리기</button>
+          </p>
+        )}
+      </Show>
+      <Show when={pendingClose()}>
+        {(pc) => (
+          <p class="banner">
+            <span>
+              "{pc().name}" 창(탭 {pc().tabs}개)을 닫을까요? 주제도 함께 사라집니다.
+            </span>
+            <button
+              onClick={() =>
+                void guard(async () => {
+                  const pending = pc();
+                  setPendingClose(undefined);
+                  expectOk(await send({ type: 'cmd.close', topicId: pending.topicId }));
+                  if (pending.topicId === currentTopicId()) return done();
+                  await loadContext();
+                  await refresh();
+                  done(`"${pending.name}" 창을 닫았습니다`);
+                })
+              }
+            >
+              닫기
+            </button>
+            <button class="quiet" onClick={() => setPendingClose(undefined)}>
+              취소
+            </button>
+          </p>
+        )}
+      </Show>
+      <Show when={suggestion()}>
+        {(sg) => (
+          <p class="banner">
+            <span>
+              <b>{sg().pattern}</b> 탭을 앞으로 "{sg().topicName}"(으)로 자동으로 보낼까요?
+            </span>
+            <button onClick={() => void answerSuggestion('accept')}>예</button>
+            <button onClick={() => void answerSuggestion('later')}>아니오</button>
+            <button class="quiet" onClick={() => void answerSuggestion('never')}>
+              다시 묻지 않기
+            </button>
+          </p>
+        )}
+      </Show>
       <ul class="rows" ref={listEl}>
         <For each={rows()}>
           {(row, i) => (

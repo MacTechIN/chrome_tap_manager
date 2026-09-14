@@ -37,6 +37,10 @@ export function createChromeActions(deps: ActionsDeps): ChromeActions {
 
     waitForWindow: deps.waitForWindow,
 
+    async closeWindow(windowId) {
+      await browser.windows.remove(windowId);
+    },
+
     async tabsOfWindow(windowId) {
       const tabs = await browser.tabs.query({ windowId });
       return tabs

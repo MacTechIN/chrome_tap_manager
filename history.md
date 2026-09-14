@@ -336,3 +336,58 @@
 
 - **요청**: "깃 커밋 푸쉬"
 - **수행**: #19~#24 작업분을 커밋 `455b5fb`로 커밋, annotated 태그 `ext-v0.3.0`, README/계획서/history 해시 갱신 후속 커밋, `main`과 태그 푸시
+
+## #26 · 2026-09-13 · 독립 배포 버전 분리: Chrome_Window_manager
+
+- **요청**: "지금 이 버전을 별도 Chrome_Window_manager 이름으로 별도 폴더에 별도 독립 버전으로 분리시키고, 개발 진행 계획은 계속 진행"
+- **수행**:
+  - `workspace/Chrome_Window_manager/`에 `extension/`(ext-v0.3.0) 복제 (node_modules/.output/.wxt 제외). 제품명 "Chrome Window Manager", 패키지명 `chrome-window-manager`, 버전 0.3.0. DEV_PLAN.md 제외
+  - 테스터용 README(설치 3단계, 사용법 표, 알려진 제약, 제보 방법 — 팝업 진단 줄 스크린샷)
+  - 자체 `pnpm install` → 테스트·빌드로 독립 동작 확인, 자체 git 저장소 초기화
+  - 본 저장소와의 연결 없음(코드 import·서브모듈 없음). 이후 본 라인 변경은 필요 시 수동으로 옮김
+- **결정**: 이 폴더는 "지인 테스트용 스냅샷". 웹스토어 비공개 등록 등 배포 준비(E12)는 본 라인에서 진행 후 다시 스냅샷
+- **다음**: 본 라인 E09 진행
+
+## #27 · 2026-09-13 · E09 규칙: 행동 학습 제안 + 수동 규칙 (F-10)
+
+- **요청**: "원래 진행대로 진행" → (중단) "이 버전을 Chrome_Window_manager로 별도 분리하고, 개발 계획은 계속" → E09 진행
+- **설계 결정**: v0.3에서 주제는 창과 함께 사라지므로 규칙·이동 기록을 주제 ID가 아닌 **주제 이름**에 바인딩(스키마 v2, v1→v2 마이그레이션: 사라진 주제의 항목 삭제). 규칙은 그 이름의 창이 열려 있을 때만 동작하고, 없으면 조용히 대기. `Repo.deleteTopic`은 규칙·이동 로그를 cascade하지 않음. 불변 조건 `rule.orphanTopic` 제거
+- **수행**:
+  - `core/rules.ts`: `urlParts`(http(s)만), `normalizePattern`, `matchRule`(host=서브도메인 포함 / prefix=host+path 경계 / regex), `evaluate`(enabled, priority→createdAt 순, 열린 주제만), `openTopicResolver`, `makeRule`, `ruleKey`. 100규칙 평가 평균 < 1 ms 테스트
+  - `core/ruleSuggest.ts`: 최근 7일 이동 로그를 (host, 주제)로 묶어 2회 이상이면 제안. 모든 이동이 같은 경로 세그먼트를 공유하면 prefix 규칙 제안. 닫힌 주제·"다시 묻지 않기"·기존 규칙이 이미 커버하는 경우 제외
+  - `core/settings.ts`: `SettingsStore`(`rulesEnabled`, `dismissedSuggestions`)
+  - `core/autoMover.ts`: tab.created / url·status=complete 갱신 시 규칙 평가 → `tabs.move`. 사용자가 직접 옮긴 탭(`CommandRunner.onUserMoved`)은 세션 내 절대 건드리지 않음, 이미 대상 창이면 무시, 같은 규칙으로 이미 옮긴 탭은 재이동 안 함. 최근 10건 기억, `undo`(원래 창으로 복귀·사용자 소유 표시·규칙 undoCount++, 3회면 규칙 비활성)
+  - `background.ts`: 이벤트 체인 끝에 `routeByRules`, `rules.list/put/toggle/delete/suggestions/accept/dismiss`, `settings.get/update`, `automove.recent/undo`
+  - 팝업: 제안 배너(예/아니오/다시 묻지 않기), 최근 60초 자동 이동 "되돌리기" 배너, `>move` 후 제안 재조회
+  - 사이드 패널: "규칙" 섹션(자동 이동 마스터 스위치, 목록 토글·삭제, host/prefix/regex + 패턴 + 주제 이름 추가, 주제 이름 datalist)
+  - 테스트 25건 추가(rules 9, ruleSuggest 4, autoMover 8, settings 1, 마이그레이션 1, 기존 갱신) → 230/230. typecheck·lint·build 통과, 정적 빌드 반영
+- **미검증**: 실기기에서 같은 사이트 탭을 같은 주제로 2회 보낸 뒤 팝업 제안 배너 표시, 수락 후 새 탭 자동 이동, 되돌리기 — 사용자 확인 대기
+- **커밋**: 미커밋
+
+## #28 · 2026-09-13 · E10 Bridge 클라이언트 인터페이스 (F-05, F-08 EXT측) · protocol v0.1
+
+- **요청**: "다음" (E10)
+- **수행**:
+  - `protocol/bridge.schema.json` v0.1 (JSON Schema draft-07): hello, snapshot_request, snapshot(page/pages/seq, 탭 ≤200), delta(seq+LiveEvent), focus/focus_result(windowTitle), move, new_topic, rename, close, topics_update(requestId/ok/error), ping/pong. v0.3 정책에 따라 `open`(저장 주제 복원) 제외. `protocol/VERSION` 0.1.0, README에 메시지 표·호스트 이름
+  - `extension/src/bridge/protocol.ts`(수기 타입, `MESSAGE_TYPES`, `HOST_NAME`), `transport.ts`(`BridgePort`/`BridgeTransport`), `client.ts`(`BridgeClient` — 상태 stopped/connecting/connected/disconnected, hello, 스냅샷 페이징, 델타, topics_update 300ms 디바운스, 커맨드 핸들러 주입, 백오프 1s→60s, `status()`), `mockHost.ts`(테스트·개발용 인메모리 호스트), `chrome/nativeTransport.ts`(`runtime.connectNative`, API 부재 시 호스트 없음으로 처리)
+  - `background.ts`: 핸들러(스냅샷 = tracker+repo, focus = 탭 활성화/창 포커스 + 활성 탭 제목 회신, move/new_topic/rename = runner/service, close = `windows.remove`), 이벤트 체인에서 `onLiveEvent`·`topicsChanged`, ready 후 `bridge.start()`, `bridge.status`/`bridge.reconnect` 메시지
+  - 팝업 진단 줄에 "브리지 연결됨/미연결", 사이드 패널 헤더 배지. manifest 권한 `nativeMessaging`
+  - 테스트 16건(`tests/bridge/protocol.test.ts` 4: 스키마 oneOf ↔ TS 목록·const type·VERSION 일치; `client.test.ts` 12: hello/status, ping, 스냅샷 3페이지, focus 성공·실패, 4개 커맨드 응답, 실패 응답, 무시, 델타·디바운스, 호스트 부재 백오프 1/2/4/8/8s, 늦게 뜬 호스트 접속·클린 종료 후 attempts 리셋, stop 후 stale 무시) → 246/246. `@types/node` 추가(테스트에서 스키마 파일 읽기). typecheck·lint·build 통과, 정적 빌드 반영
+- **결정**: 스키마는 `protocol/`에만 두고 각 앱이 타입을 각자 작성(테스트만 파일을 읽어 대조). 창 제목은 활성 탭 제목만 회신하고 " - Google Chrome" 접미사 매칭은 APP 몫. 실제 호스트가 없으면 백오프만 돌고 다른 기능은 영향 없음 — DoD 충족
+- **미검증**: 실제 네이티브 호스트와의 왕복은 `bridge/` 프로젝트(별도 계획서)에서
+- **커밋**: 미커밋. E09+E10 커밋 시 `ext-v0.5.0`(EM5) 태그 예정 (EM4의 E11은 잔여 항목 소규모)
+
+## #29 · 2026-09-14 · E11 `>close` + JSON 내보내기/가져오기/초기화 (F-09, F-12 EXT측) · v0.3.0 배포 ZIP
+
+- **요청**: "다음 진행" (E11) → 진행 중 "0.3 CHROME EXTENSION 버전을 다른 사람에게 전달하기 위해 ZIP 파일로 만들어줘"
+- **범위(v0.3 축소)**: 세션 복원은 지문 재연결(#18)로 이미 충족. 저장 주제가 없으므로 `>open`/`>save`는 없음. 남은 항목 = 창 닫기, 백업
+- **수행**:
+  - `core/commandRunner.ts` `close({topicId|windowId})`: 열린 주제만, 탭 수 회신 후 `ChromeActions.closeWindow`(= `windows.remove`). 창 닫힘 이벤트가 주제를 지우므로 별도 삭제 없음
+  - 팝업 `>close [주제]`: 즉시 닫지 않고 배너("…창(탭 N개)을 닫을까요? 주제도 함께 사라집니다") → 닫기/취소 2단계. 현재 창을 닫으면 팝업도 함께 닫힘
+  - `core/exportImport.ts`: `buildExport`(format `chrome-tap-manager/backup` v1, 규칙·설정·열린 주제+탭 URL 스냅샷), `parseExport`(형식·버전·규칙 항목 검증, `ImportError`), `applyImport`(규칙은 `ruleKey`로 의도 중복 제거·빈 패턴/이름 건너뜀, 설정은 rulesEnabled 덮어쓰기 + dismissed 합집합, 주제는 가져오지 않음 — 창이 곧 주제)
+  - 메시지 `cmd.close`, `data.export`(파일명 `chrome-tap-manager-YYYY-MM-DD.json`), `data.import`, `data.reset`(repo.clear + 설정 초기화 + 라이브 재동기화 + 인덱스/메뉴 재구축)
+  - 사이드 패널 "데이터" 섹션: 내보내기(blob 다운로드) / 가져오기(파일 선택 → 결과 alert) / 초기화(confirm)
+  - 테스트: `commandRunner` close 1건, `exportImport` 5건 → 252/252. typecheck·lint·build 통과, 정적 빌드 반영
+- **배포 ZIP**: `../Chrome_Window_manager`에서 `pnpm zip` → `dist/chrome-window-manager-0.3.0-chrome.zip`(38 KB, 9 파일) + `dist/INSTALL.md`(압축 해제 → 개발자 모드 → 압축해제된 확장 로드, 사용법 표, 문제 시 진단 줄 캡처). 팝업·패널 `<title>`의 옛 이름 "Chrome Tap Manager" 정리. 해당 폴더 커밋 `69ea21f`
+- **미검증**: 실기기에서 `>close` 배너·JSON 다운로드·가져오기 alert — 사용자 확인 대기
+- **커밋**: 미커밋 (E09+E10+E11 커밋 시 `ext-v0.5.0` 태그 예정)

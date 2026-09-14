@@ -1,7 +1,7 @@
 // core/model.ts — domain types. Pure data, no Chrome API.
 // Mirrors docs/functional_spec.md §6.2 (v0.2, "one window = one topic").
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** Chrome tab-group palette (chrome.tabGroups.ColorEnum). */
 export type TopicColor =
@@ -60,15 +60,22 @@ export interface Subgroup {
 export type RuleKind = 'host' | 'prefix' | 'regex';
 export type RuleSource = 'learned' | 'manual';
 
+/**
+ * Auto-routing rule (F-10). Bound to a topic *name*, not an id: topics live only while
+ * their window is open (v0.3), so a rule resolves to "the open topic named X" at
+ * evaluation time and simply stays dormant while no such window exists.
+ */
 export interface Rule {
   id: string;
-  topicId: string;
+  topicName: string;
   kind: RuleKind;
   pattern: string;
   priority: number;
   source: RuleSource;
   enabled: boolean;
+  /** Times the user undid an automatic move made by this rule. */
   undoCount: number;
+  createdAt: number;
 }
 
 /** Recent "send tab to topic" actions, used to learn rule suggestions (F-10). */
@@ -76,7 +83,7 @@ export interface MoveLogEntry {
   id: string;
   host: string;
   pathPrefix: string;
-  topicId: string;
+  topicName: string;
   movedAt: number;
 }
 

@@ -148,23 +148,25 @@ describe('checkInvariants', () => {
     ]);
   });
 
-  it('flags rule with missing topic and assertInvariants throws', () => {
+  it('rules are keyed by topic name and never orphan-checked; assertInvariants throws on real violations', () => {
     const store: Store = {
       ...emptyStore(),
       rules: [
         {
           id: 'r',
-          topicId: 'nope',
+          topicName: 'Gone',
           kind: 'host',
           pattern: 'github.com',
           priority: 0,
           source: 'manual',
           enabled: true,
           undoCount: 0,
+          createdAt: 0,
         },
       ],
     };
-    expect(codes(store)).toEqual(['rule.orphanTopic']);
-    expect(() => assertInvariants(store)).toThrow(/rule.orphanTopic/);
+    expect(codes(store)).toEqual([]);
+    const bad: Store = { ...emptyStore(), topics: [topic({ windowId: undefined })] };
+    expect(() => assertInvariants(bad)).toThrow(/topic.openWithoutWindow/);
   });
 });

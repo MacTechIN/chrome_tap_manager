@@ -48,13 +48,14 @@ function tab(over: Partial<Tab> = {}): Tab {
 function rule(over: Partial<Rule> = {}): Rule {
   return {
     id: 'r1',
-    topicId: 't1',
+    topicName: 'ProjectA',
     kind: 'host',
     pattern: 'github.com',
     priority: 0,
     source: 'manual',
     enabled: true,
     undoCount: 0,
+    createdAt: T,
     ...over,
   };
 }
@@ -164,22 +165,34 @@ describe.each(backends)('Repo over $name', ({ make, reset }) => {
     expect(repo.listTabs().map((t) => t.id)).toEqual(['b']);
   });
 
-  it('deleteTopic cascades to tabs, subgroups, rules and move log', async () => {
+  it('deleteTopic cascades to tabs and subgroups only', async () => {
     await repo.putTopic(topic());
     await repo.putTopic(topic({ id: 't2', name: 'B', windowId: 11 }));
     await repo.putTabs([tab({ id: 'a' }), tab({ id: 'c', topicId: 't2', chromeTabId: 102 })]);
     await repo.putSubgroup({ id: 'g1', topicId: 't1', name: 'g', collapsed: false });
     await repo.putRule(rule());
-    await repo.putRule(rule({ id: 'r2', topicId: 't2' }));
-    await repo.appendMoveLog({ id: 'm1', host: 'x', pathPrefix: '/', topicId: 't1', movedAt: T });
-    await repo.appendMoveLog({ id: 'm2', host: 'x', pathPrefix: '/', topicId: 't2', movedAt: T });
+    await repo.putRule(rule({ id: 'r2', topicName: 'B' }));
+    await repo.appendMoveLog({
+      id: 'm1',
+      host: 'x',
+      pathPrefix: '/',
+      topicName: 'ProjectA',
+      movedAt: T,
+    });
+    await repo.appendMoveLog({ id: 'm2', host: 'x', pathPrefix: '/', topicName: 'B', movedAt: T });
 
     await repo.deleteTopic('t1');
 
     expect(repo.listTabs().map((t) => t.id)).toEqual(['c']);
     expect(repo.listSubgroups()).toEqual([]);
-    expect(repo.listRules().map((r) => r.id)).toEqual(['r2']);
-    expect(repo.listMoveLog().map((m) => m.id)).toEqual(['m2']);
+    // rules and move log are keyed by topic name and survive the topic
+    expect(
+      repo
+        .listRules()
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(['r1', 'r2']);
+    expect(repo.listMoveLog().map((m) => m.id)).toEqual(['m1', 'm2']);
     // persisted, not just cached
     expect(await kv.get<Tab[]>(collectionKey('tabs'))).toHaveLength(1);
   });
@@ -213,7 +226,7 @@ describe.each(backends)('Repo over $name', ({ make, reset }) => {
         id: `m${i}`,
         host: 'h',
         pathPrefix: '/',
-        topicId: 't1',
+        topicName: 'ProjectA',
         movedAt: i,
       };
       await repo.appendMoveLog(e);
@@ -260,6 +273,49 @@ describe.each(backends)('Repo over $name', ({ make, reset }) => {
     expect(await kv.get<{ schemaVersion: number }>(META_KEY)).toEqual({
       schemaVersion: SCHEMA_VERSION,
     });
+  });
+
+  it('migrates v1 rules/moveLog (topicId) to v2 (topicName); unknown topics are dropped', async () => {
+    const raw = new MemoryKV();
+    await raw.set(META_KEY, { schemaVersion: 1 });
+    await raw.set(collectionKey('topics'), [topic({ id: 't1', name: 'Alpha' })]);
+    await raw.set(collectionKey('rules'), [
+      {
+        id: 'r1',
+        topicId: 't1',
+        kind: 'host',
+        pattern: 'a.com',
+        priority: 0,
+        source: 'manual',
+        enabled: true,
+        undoCount: 0,
+      },
+      {
+        id: 'r2',
+        topicId: 'gone',
+        kind: 'host',
+        pattern: 'b.com',
+        priority: 0,
+        source: 'manual',
+        enabled: true,
+        undoCount: 0,
+      },
+    ]);
+    await raw.set(collectionKey('moveLog'), [
+      { id: 'm1', host: 'a.com', pathPrefix: '/', topicId: 't1', movedAt: 1 },
+      { id: 'm2', host: 'b.com', pathPrefix: '/', topicId: 'gone', movedAt: 2 },
+    ]);
+    const r = new Repo(raw);
+    const res = await r.init();
+    expect(res).toMatchObject({ migrated: true, fresh: false, schemaVersion: SCHEMA_VERSION });
+    expect(r.listRules()).toEqual([
+      expect.objectContaining({ id: 'r1', topicName: 'Alpha', createdAt: 0 }),
+    ]);
+    expect(r.listRules()[0]).not.toHaveProperty('topicId');
+    expect(r.listMoveLog()).toEqual([
+      { id: 'm1', host: 'a.com', pathPrefix: '/', topicName: 'Alpha', movedAt: 1 },
+    ]);
+    expect(await raw.get(META_KEY)).toEqual({ schemaVersion: SCHEMA_VERSION });
   });
 
   it('refuses a newer schema than supported', async () => {

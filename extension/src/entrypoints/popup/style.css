@@ -150,3 +150,35 @@ body {
   font-size: 11px;
   word-break: break-all;
 }
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--sel);
+  font-size: 12px;
+}
+
+.banner span {
+  flex: 1;
+  min-width: 0;
+}
+
+.banner button {
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.banner button.quiet {
+  opacity: 0.7;
+}

@@ -18,8 +18,7 @@ export interface InvariantViolation {
     | 'tab.duplicateChromeId'
     | 'tab.orphanSubgroup'
     | 'tab.subgroupTopicMismatch'
-    | 'subgroup.orphanTopic'
-    | 'rule.orphanTopic';
+    | 'subgroup.orphanTopic';
   message: string;
   id?: string;
 }
@@ -140,12 +139,6 @@ export function checkInvariants(store: Store): InvariantViolation[] {
           id: tab.id,
         });
       }
-    }
-  }
-
-  for (const r of store.rules) {
-    if (!topicById.has(r.topicId)) {
-      v.push({ code: 'rule.orphanTopic', message: `rule ${r.id} → missing topic`, id: r.id });
     }
   }
 

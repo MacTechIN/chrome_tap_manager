@@ -1,0 +1,198 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/MacTechIN/chrome_tap_manager/protocol/bridge.schema.json",
+  "title": "Chrome_Project_manager Bridge protocol v0.1",
+  "description": "Messages exchanged between the Chrome extension (EXT) and the desktop tray app (APP) over Chrome Native Messaging. Every message is a JSON object with a `type` field. host→ext messages must stay under 1 MB; the extension splits snapshots into pages of at most 200 tabs. This file is the only artifact shared between extension/, desktop/ and bridge/; each app generates or hand-writes its own types from it and pins protocol/VERSION.",
+  "oneOf": [
+    { "$ref": "#/definitions/hello" },
+    { "$ref": "#/definitions/snapshot_request" },
+    { "$ref": "#/definitions/snapshot" },
+    { "$ref": "#/definitions/delta" },
+    { "$ref": "#/definitions/focus" },
+    { "$ref": "#/definitions/focus_result" },
+    { "$ref": "#/definitions/move" },
+    { "$ref": "#/definitions/new_topic" },
+    { "$ref": "#/definitions/rename" },
+    { "$ref": "#/definitions/close" },
+    { "$ref": "#/definitions/topics_update" },
+    { "$ref": "#/definitions/ping" },
+    { "$ref": "#/definitions/pong" }
+  ],
+  "definitions": {
+    "topic": {
+      "type": "object",
+      "required": ["id", "name", "isNamed", "windowId", "tabCount", "lastActiveAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "isNamed": { "type": "boolean" },
+        "color": { "type": "string", "enum": ["grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"] },
+        "windowId": { "type": "integer" },
+        "tabCount": { "type": "integer", "minimum": 0 },
+        "lastActiveAt": { "type": "integer" }
+      }
+    },
+    "window": {
+      "type": "object",
+      "required": ["id", "focused", "topicId"],
+      "properties": {
+        "id": { "type": "integer" },
+        "focused": { "type": "boolean" },
+        "topicId": { "type": "string" },
+        "title": { "type": "string", "description": "Active tab title as Chrome shows it in the OS window title; APP matches HWND/AXWindow by it" }
+      }
+    },
+    "tab": {
+      "type": "object",
+      "required": ["id", "windowId", "topicId", "index", "url", "title", "active"],
+      "properties": {
+        "id": { "type": "integer", "description": "Chrome tabId (volatile)" },
+        "rowId": { "type": "string", "description": "Extension's stable row id" },
+        "windowId": { "type": "integer" },
+        "topicId": { "type": "string" },
+        "index": { "type": "integer", "minimum": 0 },
+        "url": { "type": "string" },
+        "title": { "type": "string" },
+        "favicon": { "type": "string" },
+        "active": { "type": "boolean" },
+        "groupId": { "type": "integer" },
+        "lastActiveAt": { "type": "integer" }
+      }
+    },
+    "group": {
+      "type": "object",
+      "required": ["id", "windowId", "title", "color", "collapsed"],
+      "properties": {
+        "id": { "type": "integer" },
+        "windowId": { "type": "integer" },
+        "title": { "type": "string" },
+        "color": { "type": "string" },
+        "collapsed": { "type": "boolean" }
+      }
+    },
+    "hello": {
+      "description": "EXT→APP, first message after the port opens.",
+      "type": "object",
+      "required": ["type", "protocolVersion", "extVersion", "browser", "lastSeq"],
+      "properties": {
+        "type": { "const": "hello" },
+        "protocolVersion": { "type": "string" },
+        "extVersion": { "type": "string" },
+        "browser": { "type": "string", "enum": ["chrome", "edge", "brave", "chromium"] },
+        "lastSeq": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "snapshot_request": {
+      "description": "APP→EXT, ask for a full resync.",
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "const": "snapshot_request" } }
+    },
+    "snapshot": {
+      "description": "EXT→APP, one page of the full state. `page`/`pages` are 1-based; the last page carries `seq`.",
+      "type": "object",
+      "required": ["type", "page", "pages", "seq", "topics", "windows", "tabs", "groups"],
+      "properties": {
+        "type": { "const": "snapshot" },
+        "page": { "type": "integer", "minimum": 1 },
+        "pages": { "type": "integer", "minimum": 1 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "topics": { "type": "array", "items": { "$ref": "#/definitions/topic" } },
+        "windows": { "type": "array", "items": { "$ref": "#/definitions/window" } },
+        "tabs": { "type": "array", "items": { "$ref": "#/definitions/tab" }, "maxItems": 200 },
+        "groups": { "type": "array", "items": { "$ref": "#/definitions/group" } }
+      }
+    },
+    "delta": {
+      "description": "EXT→APP, one live event with its monotonic sequence number. `event` is the extension's LiveEvent (init | window.* | tab.* | group.*); APP requests a snapshot if it sees a gap.",
+      "type": "object",
+      "required": ["type", "seq", "event"],
+      "properties": {
+        "type": { "const": "delta" },
+        "seq": { "type": "integer", "minimum": 1 },
+        "event": { "type": "object", "required": ["type"], "properties": { "type": { "type": "string" } } }
+      }
+    },
+    "focus": {
+      "description": "APP→EXT, bring a tab/window to the front inside Chrome. EXT answers with focus_result; APP then raises Chrome at OS level.",
+      "type": "object",
+      "required": ["type", "requestId", "windowId"],
+      "properties": {
+        "type": { "const": "focus" },
+        "requestId": { "type": "string" },
+        "windowId": { "type": "integer" },
+        "tabId": { "type": "integer" }
+      }
+    },
+    "focus_result": {
+      "type": "object",
+      "required": ["type", "requestId", "ok"],
+      "properties": {
+        "type": { "const": "focus_result" },
+        "requestId": { "type": "string" },
+        "ok": { "type": "boolean" },
+        "windowId": { "type": "integer" },
+        "windowTitle": { "type": "string", "description": "Chrome's OS window title after activation (\"<active tab title> - Google Chrome\")" },
+        "error": { "type": "string" }
+      }
+    },
+    "move": {
+      "description": "APP→EXT, send tabs to a topic's window.",
+      "type": "object",
+      "required": ["type", "requestId", "tabIds", "topicId"],
+      "properties": {
+        "type": { "const": "move" },
+        "requestId": { "type": "string" },
+        "tabIds": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+        "topicId": { "type": "string" },
+        "switchTo": { "type": "boolean" }
+      }
+    },
+    "new_topic": {
+      "description": "APP→EXT, split tabs into a new window (= new topic).",
+      "type": "object",
+      "required": ["type", "requestId", "tabIds"],
+      "properties": {
+        "type": { "const": "new_topic" },
+        "requestId": { "type": "string" },
+        "tabIds": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+        "name": { "type": "string" }
+      }
+    },
+    "rename": {
+      "type": "object",
+      "required": ["type", "requestId", "topicId", "name"],
+      "properties": {
+        "type": { "const": "rename" },
+        "requestId": { "type": "string" },
+        "topicId": { "type": "string" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 50 }
+      }
+    },
+    "close": {
+      "description": "APP→EXT, close a topic's window (the topic disappears with it).",
+      "type": "object",
+      "required": ["type", "requestId", "topicId"],
+      "properties": {
+        "type": { "const": "close" },
+        "requestId": { "type": "string" },
+        "topicId": { "type": "string" }
+      }
+    },
+    "topics_update": {
+      "description": "EXT→APP, the full topic list after any topic change (also the generic reply to move/new_topic/rename/close, carrying requestId and ok).",
+      "type": "object",
+      "required": ["type", "seq", "topics"],
+      "properties": {
+        "type": { "const": "topics_update" },
+        "seq": { "type": "integer", "minimum": 0 },
+        "requestId": { "type": "string" },
+        "ok": { "type": "boolean" },
+        "error": { "type": "string" },
+        "topics": { "type": "array", "items": { "$ref": "#/definitions/topic" } }
+      }
+    },
+    "ping": { "type": "object", "required": ["type"], "properties": { "type": { "const": "ping" } } },
+    "pong": { "type": "object", "required": ["type"], "properties": { "type": { "const": "pong" } } }
+  }
+}

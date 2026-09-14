@@ -2,6 +2,7 @@
 // Chrome side effects go through the injected `ChromeActions`; state through Repo/TopicService.
 
 import type { MoveLogEntry, Topic } from './model';
+import { urlParts } from './rules';
 import type { Repo } from './repo';
 import { TopicError, type TopicService } from './topicService';
 
@@ -14,8 +15,10 @@ export interface ChromeActions {
   createWindow(opts: { tabId?: number; urls?: string[]; focused?: boolean }): Promise<number>;
   /** Resolves once the window is known to the live tracker / topic service. */
   waitForWindow(windowId: number): Promise<void>;
-  /** Live tabs of a window (chrome tab id + url), used after restoring a saved topic. */
+  /** Live tabs of a window (chrome tab id + url). */
   tabsOfWindow(windowId: number): Promise<{ id: number; url: string }[]>;
+  /** Closes a whole window (its topic disappears with it). */
+  closeWindow(windowId: number): Promise<void>;
 }
 
 export type FocusTarget =
@@ -39,6 +42,8 @@ export interface CommandRunnerOptions {
   service: TopicService;
   actions: ChromeActions;
   log?: (msg: string, data?: unknown) => void;
+  /** Called after the user deliberately moved tabs (rules must never override those tabs). */
+  onUserMoved?: (chromeTabIds: number[]) => void;
 }
 
 export class CommandRunner {
@@ -46,6 +51,7 @@ export class CommandRunner {
   private readonly service: TopicService;
   private readonly actions: ChromeActions;
   private readonly log?: (msg: string, data?: unknown) => void;
+  private readonly onUserMoved?: (chromeTabIds: number[]) => void;
   /** Last topic a tab was sent to (for the "send to last topic" shortcut). */
   lastMoveTopicId: string | undefined;
 
@@ -54,6 +60,7 @@ export class CommandRunner {
     this.service = opts.service;
     this.actions = opts.actions;
     this.log = opts.log;
+    this.onUserMoved = opts.onUserMoved;
   }
 
   // ---- focus ---------------------------------------------------------------
@@ -110,7 +117,8 @@ export class CommandRunner {
     );
     const toMove = opts.chromeTabIds.filter((id) => !targetRows.has(id));
     if (toMove.length > 0) await this.actions.moveTabs(toMove, windowId);
-    await this.logMoves(toMove, topic.id);
+    await this.logMoves(toMove, topic.name);
+    if (toMove.length > 0) this.onUserMoved?.(toMove);
     this.lastMoveTopicId = topic.id;
     if (opts.switchTo) await this.actions.focusWindow(windowId);
     this.log?.('tabs moved', { topicId: topic.id, windowId, moved: toMove.length });
@@ -123,6 +131,7 @@ export class CommandRunner {
     if (first === undefined) throw new TopicError('topic.notFound', '분리할 탭이 없습니다');
     const windowId = await this.actions.createWindow({ tabId: first, focused: true });
     if (rest.length > 0) await this.actions.moveTabs(rest, windowId);
+    this.onUserMoved?.(opts.chromeTabIds);
     await this.actions.waitForWindow(windowId);
     let topic = this.service.topicForWindow(windowId);
     if (!topic) throw new TopicError('topic.notFound', '새 창의 주제를 찾을 수 없습니다');
@@ -152,6 +161,28 @@ export class CommandRunner {
     return this.move({ topicId: opts.topicId, chromeTabIds: ids, switchTo: true });
   }
 
+  /** `>close [topic]`: close the topic's window. Returns what was closed for the confirmation UI. */
+  async close(opts: { topicId?: string; windowId?: number }): Promise<{
+    topicId: string;
+    name: string;
+    windowId: number;
+    tabs: number;
+  }> {
+    const topic =
+      opts.topicId !== undefined
+        ? this.requireOpenTopic(opts.topicId)
+        : opts.windowId !== undefined
+          ? this.service.topicForWindow(opts.windowId)
+          : undefined;
+    if (!topic || topic.windowId === undefined) {
+      throw new TopicError('topic.notFound', '닫을 창의 주제를 찾을 수 없습니다');
+    }
+    const tabs = this.repo.listTabs({ topicId: topic.id, isOpen: true }).length;
+    await this.actions.closeWindow(topic.windowId);
+    this.log?.('topic window closed', { topicId: topic.id, name: topic.name, tabs });
+    return { topicId: topic.id, name: topic.name, windowId: topic.windowId, tabs };
+  }
+
   // ---- helpers -------------------------------------------------------------------
 
   private requireOpenTopic(id: string): Topic & { windowId: number } {
@@ -163,25 +194,18 @@ export class CommandRunner {
     return t as Topic & { windowId: number };
   }
 
-  private async logMoves(chromeTabIds: number[], topicId: string): Promise<void> {
+  private async logMoves(chromeTabIds: number[], topicName: string): Promise<void> {
     const now = this.repo.now();
     for (const id of chromeTabIds) {
       const row = this.repo.findTabByChromeId(id);
       if (!row) continue;
-      let host = '';
-      let pathPrefix = '/';
-      try {
-        const u = new URL(row.url);
-        host = u.hostname.replace(/^www\./, '');
-        pathPrefix = u.pathname.split('/').slice(0, 2).join('/') || '/';
-      } catch {
-        continue;
-      }
+      const parts = urlParts(row.url);
+      if (!parts) continue;
       const entry: MoveLogEntry = {
         id: this.repo.newId(),
-        host,
-        pathPrefix,
-        topicId,
+        host: parts.host,
+        pathPrefix: parts.pathPrefix,
+        topicName,
         movedAt: now,
       };
       await this.repo.appendMoveLog(entry);

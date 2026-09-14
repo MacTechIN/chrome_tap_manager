@@ -6,7 +6,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    "types": ["chrome", "vitest/globals"]
+    "types": ["chrome", "vitest/globals", "node"]
   },
   "include": ["src", "tests", "wxt.config.ts", "vitest.config.ts", ".wxt/wxt.d.ts"]
 }
