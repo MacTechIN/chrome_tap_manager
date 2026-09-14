@@ -36,7 +36,7 @@
 |---|---|---|
 | 기획 문서 (정의서 / 리서치 / 기능정의서) | ✅ 완료 | 기능정의서 v0.2 — "창 = 주제" 모델 확정 |
 | Extension 개발 계획서 | ✅ 완료 | `extension/DEV_PLAN.md` v0.2 |
-| Extension 구현 | 🟡 E11 완료, E12 대기 | `ext-v0.3.0` + E09 규칙 + E10 Bridge 클라이언트 + E11 닫기/백업(테스트 252건). 커밋 시 `ext-v0.5.0` |
+| Extension 구현 | 🟡 E11 완료, E12 대기 | `ext-v0.5.0` (E09 규칙 + E10 Bridge 클라이언트 + E11 닫기/백업, 테스트 252건) |
 | Desktop 앱 | ⬜ 미착수 | Extension EM5 이후 |
 | Bridge 호스트 | ⬜ 미착수 | `protocol/` v0.1 확정 → 착수 가능 |
 | Protocol 스키마 | ✅ v0.1 | `protocol/bridge.schema.json`, 메시지 13종 |
@@ -65,9 +65,9 @@
 
 | 날짜 | 버전 / 태그 | 커밋 | 내용 |
 |---|---|---|---|
-| 2026-09-14 | (미커밋) | — | E11: `>close [주제]`(팝업 확인 배너 → `windows.remove`, 주제도 소멸), `core/exportImport.ts` JSON 백업(규칙·설정·열린 주제 스냅샷) 내보내기/가져오기(규칙 의도 중복 제거, 설정 병합)·데이터 초기화 — 사이드 패널 "데이터" 섹션. 테스트 6건 추가 → 252건. 별도 폴더 `Chrome_Window_manager`에 v0.3.0 배포 ZIP + `dist/INSTALL.md` |
-| 2026-09-13 | (미커밋) | — | E10 Bridge: `protocol/bridge.schema.json` v0.1(13종 메시지), `extension/src/bridge/{protocol,transport,client,mockHost}.ts`, `chrome/nativeTransport.ts`, 백그라운드 핸들러(스냅샷 200탭 페이지, 델타 seq, focus→focus_result, move/new_topic/rename/close→topics_update, 재접속 백오프), 팝업·패널 연결 배지, 권한 `nativeMessaging`. 테스트 16건 추가 → 246건 |
-| 2026-09-13 | (미커밋) | — | E09 규칙: 스키마 v2(규칙·이동 로그를 주제 **이름**에 바인딩), `core/rules.ts`(host/prefix/regex 평가), `core/ruleSuggest.ts`(같은 사이트→같은 주제 2회 시 1회 제안), `core/autoMover.ts`(URL 확정 시 자동 이동, 사용자 이동 우선, 되돌리기 3회 시 규칙 비활성), `core/settings.ts`, 팝업 제안 배너·되돌리기, 사이드 패널 규칙 편집. 독립 배포 스냅샷 `../Chrome_Window_manager`(자체 git) 생성 |
+| 2026-09-14 | `ext-v0.5.0` | `d590e0b` | **EM4·EM5 완료.** E11: `>close [주제]`(팝업 확인 배너 → `windows.remove`, 주제도 소멸), `core/exportImport.ts` JSON 백업(규칙·설정·열린 주제 스냅샷) 내보내기/가져오기(규칙 의도 중복 제거, 설정 병합)·데이터 초기화 — 사이드 패널 "데이터" 섹션. 테스트 6건 추가 → 252건. 별도 폴더 `Chrome_Window_manager`에 v0.3.0 배포 ZIP + `dist/INSTALL.md` |
+| 2026-09-13 | (ext-v0.5.0에 포함) | `d590e0b` | E10 Bridge: `protocol/bridge.schema.json` v0.1(13종 메시지), `extension/src/bridge/{protocol,transport,client,mockHost}.ts`, `chrome/nativeTransport.ts`, 백그라운드 핸들러(스냅샷 200탭 페이지, 델타 seq, focus→focus_result, move/new_topic/rename/close→topics_update, 재접속 백오프), 팝업·패널 연결 배지, 권한 `nativeMessaging`. 테스트 16건 추가 → 246건 |
+| 2026-09-13 | (ext-v0.5.0에 포함) | `d590e0b` | E09 규칙: 스키마 v2(규칙·이동 로그를 주제 **이름**에 바인딩), `core/rules.ts`(host/prefix/regex 평가), `core/ruleSuggest.ts`(같은 사이트→같은 주제 2회 시 1회 제안), `core/autoMover.ts`(URL 확정 시 자동 이동, 사용자 이동 우선, 되돌리기 3회 시 규칙 비활성), `core/settings.ts`, 팝업 제안 배너·되돌리기, 사이드 패널 규칙 편집. 독립 배포 스냅샷 `../Chrome_Window_manager`(자체 git) 생성 |
 | 2026-09-12 | `ext-v0.3.0` | `455b5fb` | **정책 v0.3**: 주제는 창이 열려 있는 동안만 존재. 창을 닫으면 이름이 있어도 삭제, 저장된 주제·`@saved`·`>open`·`>save` 폐지, 검색·패널은 열린 창·탭만. 잔재는 새로고침 시 전부 정리(현재 창과 같은 탭 구성이면 이름만 승계). `file://C:` 자동 이름 개선 |
 | 2026-09-12 | (ext-v0.3.0에 포함) | `455b5fb` | E08 Side Panel + 하위 그룹: Chrome Tab Group 읽기 전용 미러(`LiveGroup`, `Subgroup` 행, 창 닫힘 시 이름·색 보존), `sidepanel.tree`/`topic.setColor`, Solid 사이드 패널(주제→그룹→탭 트리, 드래그로 주제 이동, 이름·색상 편집, 저장된 주제), 팝업에서 패널 열기. 권한 `tabGroups`, `sidePanel`. 테스트 209건 |
 | 2026-09-12 | (ext-v0.3.0에 포함) | `455b5fb` | **버그 수정 2**: 이름 붙은 저장 복제 주제 선택 시 새 창 35탭 생성 → 열린 창과 겹치는 저장 주제는 이름을 물려주고 흡수, 복원 직전에도 재검사해 기존 창으로 이동. 진단 줄(`debug.stats`), `pnpm static` 정적 테스트 루프, `Repo.init` 데이터 보호. 테스트 200건 |

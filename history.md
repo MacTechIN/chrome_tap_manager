@@ -391,3 +391,8 @@
 - **배포 ZIP**: `../Chrome_Window_manager`에서 `pnpm zip` → `dist/chrome-window-manager-0.3.0-chrome.zip`(38 KB, 9 파일) + `dist/INSTALL.md`(압축 해제 → 개발자 모드 → 압축해제된 확장 로드, 사용법 표, 문제 시 진단 줄 캡처). 팝업·패널 `<title>`의 옛 이름 "Chrome Tap Manager" 정리. 해당 폴더 커밋 `69ea21f`
 - **미검증**: 실기기에서 `>close` 배너·JSON 다운로드·가져오기 alert — 사용자 확인 대기
 - **커밋**: 미커밋 (E09+E10+E11 커밋 시 `ext-v0.5.0` 태그 예정)
+
+## #30 · 2026-09-14 · 커밋 ext-v0.5.0
+
+- **요청**: "커밋"
+- **수행**: E09+E10+E11을 한 커밋으로 → `d590e0b`, 태그 `ext-v0.5.0`(EM4·EM5 완료). README 버전 히스토리·DEV_PLAN 체크리스트에 해시 반영. 푸시는 요청 시
