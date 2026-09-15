@@ -243,7 +243,7 @@ chrome_tap_manager/
 | E09 | 규칙: 행동 학습 제안 + 수동 규칙 | ✅ 완료 (실기기 제안 배너·자동 이동 확인은 사용자 검증 대기) | 2026-09-13 | 2026-09-13 | `d590e0b` | #27 |
 | E10 | Bridge 클라이언트 인터페이스 | ✅ 완료 (실제 호스트 연동은 `bridge/` 프로젝트 몫) | 2026-09-13 | 2026-09-13 | `d590e0b` | #28 |
 | E11 | 세션 복원 + Topic 열기/닫기 | ✅ 완료 — **범위 축소(v0.3)**: 지문 재연결(#18), `>close`(확인 단계), JSON 내보내기/가져오기, 데이터 초기화. `>open`/`>save`/저장 탭 폐지 | 2026-09-14 | 2026-09-14 | `d590e0b` | #29 |
-| E12 | 옵션 · 패키징 · 스토어 | ✅ 완료 — 옵션 페이지(온보딩·단축키·규칙·데스크톱 연결·데이터·진단), 아이콘 세트, manifest `key` 고정(ID `ddhenmblchfpohdkenlkfiopjgciljhm`), `minimum_chrome_version` 116, `nativeMessaging` 선택 권한화, `store/listing.md`·`privacy.md`, `pnpm zip`/`zip:store`. 스토어 실제 심사는 사용자 몫 | 2026-09-14 | 2026-09-14 | (미커밋) | #31 |
+| E12 | 옵션 · 패키징 · 스토어 | ✅ 완료 — 옵션 페이지(온보딩·단축키·규칙·데스크톱 연결·데이터·진단), 아이콘 세트, manifest `key` 고정(ID `ddhenmblchfpohdkenlkfiopjgciljhm`), `minimum_chrome_version` 116, `nativeMessaging` 선택 권한화, `store/listing.md`·`privacy.md`, `pnpm zip`/`zip:store`. 스토어 실제 심사는 사용자 몫 | 2026-09-14 | 2026-09-14 | `b5008a9` / `ext-v1.0.0` | #31 |
 
 이 표는 스텝이 바뀔 때마다 갱신한다. 루트 `README.md`의 진행 현황과 일치해야 한다.
 
