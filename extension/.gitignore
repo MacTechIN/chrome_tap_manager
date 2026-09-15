@@ -7,3 +7,4 @@ stats-*.json
 .env.*
 !.env.example
 *.log
+keys/*.pem

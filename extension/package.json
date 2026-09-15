@@ -1,6 +1,6 @@
 {
   "name": "chrome-tap-manager-extension",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Chrome_Project_manager - Chrome Extension (one window = one topic)",
@@ -9,6 +9,7 @@
     "dev:firefox": "wxt -b firefox",
     "build": "wxt build",
     "zip": "wxt zip",
+    "zip:store": "node scripts/zip-store.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

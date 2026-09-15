@@ -36,7 +36,7 @@
 |---|---|---|
 | 기획 문서 (정의서 / 리서치 / 기능정의서) | ✅ 완료 | 기능정의서 v0.2 — "창 = 주제" 모델 확정 |
 | Extension 개발 계획서 | ✅ 완료 | `extension/DEV_PLAN.md` v0.2 |
-| Extension 구현 | 🟡 E11 완료, E12 대기 | `ext-v0.5.0` (E09 규칙 + E10 Bridge 클라이언트 + E11 닫기/백업, 테스트 252건) |
+| Extension 구현 | 🟢 E00~E12 완료 (EM6) | `ext-v0.5.0` + E12 옵션·아이콘·고정 ID·스토어 자료. 커밋 시 `ext-v1.0.0`. 남은 것: 실기기 검증, 스토어 등록 |
 | Desktop 앱 | ⬜ 미착수 | Extension EM5 이후 |
 | Bridge 호스트 | ⬜ 미착수 | `protocol/` v0.1 확정 → 착수 가능 |
 | Protocol 스키마 | ✅ v0.1 | `protocol/bridge.schema.json`, 메시지 13종 |
@@ -57,7 +57,7 @@
 | E09 | 규칙: 행동 학습 제안 + 수동 규칙 | ✅ 완료 | 2026-09-13 |
 | E10 | Bridge 클라이언트 인터페이스 | ✅ 완료 | 2026-09-13 |
 | E11 | 세션 복원 + Topic 열기/닫기 | ✅ 완료 (v0.3 축소 범위) | 2026-09-14 |
-| E12 | 옵션 · 패키징 · 스토어 | ⬜ | |
+| E12 | 옵션 · 패키징 · 스토어 | ✅ 완료 | 2026-09-14 |
 
 ---
 
@@ -65,6 +65,7 @@
 
 | 날짜 | 버전 / 태그 | 커밋 | 내용 |
 |---|---|---|---|
+| 2026-09-14 | (미커밋) | — | **EM6.** E12: 옵션 페이지 `entrypoints/options/`(시작하기 온보딩 "창=주제, Chrome 창 이름과 별개", 단축키 표 + 변경 링크, 규칙 스위치, 데스크톱 앱 연결 켜기/끄기, JSON 내보내기/가져오기/초기화, 진단) — 첫 설치 시 자동 열림, 팝업 푸터 "설정". 아이콘 16/32/48/128(`scripts/gen-icons.mjs`로 생성). manifest `key` 고정 → ID `ddhenmblchfpohdkenlkfiopjgciljhm`(개인키 `keys/*.pem` git 제외), `minimum_chrome_version` 116, `nativeMessaging`을 선택 권한으로 이동(권한 검토). `store/listing.md`(설명 KO/EN·권한 근거·배포 절차), `store/privacy.md`. 버전 1.0.0, `pnpm zip:store`(key 없는 zip) |
 | 2026-09-14 | `ext-v0.5.0` | `d590e0b` | **EM4·EM5 완료.** E11: `>close [주제]`(팝업 확인 배너 → `windows.remove`, 주제도 소멸), `core/exportImport.ts` JSON 백업(규칙·설정·열린 주제 스냅샷) 내보내기/가져오기(규칙 의도 중복 제거, 설정 병합)·데이터 초기화 — 사이드 패널 "데이터" 섹션. 테스트 6건 추가 → 252건. 별도 폴더 `Chrome_Window_manager`에 v0.3.0 배포 ZIP + `dist/INSTALL.md` |
 | 2026-09-13 | (ext-v0.5.0에 포함) | `d590e0b` | E10 Bridge: `protocol/bridge.schema.json` v0.1(13종 메시지), `extension/src/bridge/{protocol,transport,client,mockHost}.ts`, `chrome/nativeTransport.ts`, 백그라운드 핸들러(스냅샷 200탭 페이지, 델타 seq, focus→focus_result, move/new_topic/rename/close→topics_update, 재접속 백오프), 팝업·패널 연결 배지, 권한 `nativeMessaging`. 테스트 16건 추가 → 246건 |
 | 2026-09-13 | (ext-v0.5.0에 포함) | `d590e0b` | E09 규칙: 스키마 v2(규칙·이동 로그를 주제 **이름**에 바인딩), `core/rules.ts`(host/prefix/regex 평가), `core/ruleSuggest.ts`(같은 사이트→같은 주제 2회 시 1회 제안), `core/autoMover.ts`(URL 확정 시 자동 이동, 사용자 이동 우선, 되돌리기 3회 시 규칙 비활성), `core/settings.ts`, 팝업 제안 배너·되돌리기, 사이드 패널 규칙 편집. 독립 배포 스냅샷 `../Chrome_Window_manager`(자체 git) 생성 |

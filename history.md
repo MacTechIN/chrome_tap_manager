@@ -396,3 +396,17 @@
 
 - **요청**: "커밋"
 - **수행**: E09+E10+E11을 한 커밋으로 → `d590e0b`, 태그 `ext-v0.5.0`(EM4·EM5 완료). README 버전 히스토리·DEV_PLAN 체크리스트에 해시 반영. 푸시는 요청 시
+
+## #31 · 2026-09-14 · E12 옵션 페이지·아이콘·고정 ID·스토어 준비 (F-15 EXT측)
+
+- **요청**: "다음" (E12)
+- **수행**:
+  - 옵션 페이지 `src/entrypoints/options/{index.html,main.tsx,App.tsx,style.css}` (탭으로 열림): 시작하기 온보딩(창=주제, 창 닫으면 주제 소멸, 검색·보내기 단축키, Chrome 자체 "창 이름 지정"과 별개임을 안내), 단축키 표(`commands.getAll`) + `chrome://extensions/shortcuts` 링크, 규칙 자동 이동 스위치, 데스크톱 앱 연결(상태·켜기=권한 요청+재접속·끄기=권한 제거), 데이터(JSON 내보내기/가져오기/초기화), 진단(`debug.stats`·최근 오류). `onInstalled(install)` 시 자동 열림, 팝업 푸터에 "설정" 링크
+  - 아이콘: `scripts/gen-icons.mjs`가 zlib만으로 PNG 16/32/48/128 생성(파란 타일 + 흰 창 + 주황 렌즈). `public/icon/`, action `default_icon`
+  - manifest: `key` 고정(openssl RSA-2048, 공개키 base64 → ID `ddhenmblchfpohdkenlkfiopjgciljhm`; 개인키 `keys/chrome-tap-manager.pem`은 `.gitignore`), `minimum_chrome_version: '116'`, `nativeMessaging`을 `optional_permissions`로 이동 — 백그라운드는 `permissions.contains` 확인 후에만 `BridgeClient.start()`, `bridge.reconnect`도 동일, `nativeTransport`는 `connectNative` 예외를 호스트 부재로 처리. 권한 근거 표를 config 주석과 `store/listing.md`에 기록
+  - 버전 1.0.0(`package.json` → manifest). `pnpm zip`(key 포함, 테스터/개발자 모드용) / `pnpm zip:store`(`scripts/zip-store.mjs`, STORE=1로 key 제거 — 스토어는 최초 업로드 후 key가 있는 zip을 거부)
+  - `store/listing.md`: 짧은/상세 설명 KO·EN, 권한 근거, 스크린샷 목록, 배포 절차. `store/privacy.md`: 개인정보처리방침 KO·EN(외부 전송 없음, 선택 권한 설명)
+  - typecheck·lint 통과, 테스트 252/252(성능 테스트 1건은 pnpm install과 겹칠 때 13 ms로 한 번 실패 → 재실행 통과), 정적 빌드 반영
+- **주의(사용자 안내)**: 지금 로드된 개발 확장의 ID(`ijpic…`)는 `key` 때문에 새 ID로 바뀌므로 ↻ 하면 `storage.local`(규칙·설정)이 새로 시작됨. 필요하면 ↻ 전에 사이드 패널 "내보내기"로 백업 후 새 ID에서 가져오기
+- **미검증**: 실기기에서 옵션 페이지 자동 열림, 선택 권한 요청 다이얼로그, 새 ID 로드, 아이콘 표시. 스토어 심사·스크린샷은 사용자 작업
+- **커밋**: 미커밋 (커밋 시 `ext-v1.0.0`, EM6)

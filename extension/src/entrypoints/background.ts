@@ -124,8 +124,17 @@ export default defineBackground(() => {
       extVersion: browser.runtime.getManifest().version,
       log,
     });
-    bridge.start();
+    if (await hasNativePermission()) bridge.start();
   })().catch((err) => fail('background init failed', err));
+
+  /** nativeMessaging is optional (E12); the bridge only runs once the user granted it. */
+  async function hasNativePermission(): Promise<boolean> {
+    try {
+      return await browser.permissions.contains({ permissions: ['nativeMessaging'] });
+    } catch {
+      return false;
+    }
+  }
 
   /** F-10: when a tab's URL settles, let rules route it (user moves always win). */
   async function routeByRules(event: LiveEvent, state: LiveState): Promise<void> {
@@ -345,9 +354,13 @@ export default defineBackground(() => {
       .catch((err) => log('send-to-last-topic failed', err));
   });
 
-  browser.runtime.onInstalled.addListener(() => {
+  browser.runtime.onInstalled.addListener((details) => {
     menuDirty = true;
     ready.then(rebuildMenu).catch((err) => log('menu init failed', err));
+    // Onboarding (E12): first install opens the options page ("창 = 주제" explained there).
+    if (details.reason === 'install') {
+      browser.runtime.openOptionsPage().catch((err) => log('openOptionsPage failed', err));
+    }
   });
 
   // ---- omnibox: "t" + space in the address bar ----
@@ -547,7 +560,7 @@ export default defineBackground(() => {
             };
           case 'bridge.reconnect':
             bridge?.stop();
-            bridge?.start();
+            if (await hasNativePermission()) bridge?.start();
             return {
               type: 'bridge.status',
               status: bridge?.status() ?? { state: 'stopped', hostName: '', attempts: 0 },

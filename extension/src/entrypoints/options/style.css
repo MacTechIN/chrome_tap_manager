@@ -1,0 +1,150 @@
+:root {
+  color-scheme: light dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Apple SD Gothic Neo',
+    'Malgun Gothic',
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  --line: color-mix(in srgb, currentColor 14%, transparent);
+  --muted: color-mix(in srgb, currentColor 60%, transparent);
+  --accent: #1f6feb;
+}
+
+body {
+  margin: 0;
+}
+
+.options {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+h2 {
+  font-size: 15px;
+  margin: 0 0 8px;
+}
+
+section {
+  border-top: 1px solid var(--line);
+  padding: 16px 0;
+}
+
+p {
+  margin: 4px 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+
+.onboarding {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.onboarding li {
+  margin: 6px 0;
+}
+
+code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--line);
+}
+
+kbd {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
+table {
+  border-collapse: collapse;
+  margin-bottom: 8px;
+}
+
+td {
+  padding: 3px 16px 3px 0;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+button,
+.file {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:hover,
+.file:hover {
+  border-color: var(--accent);
+}
+
+.file input {
+  display: none;
+}
+
+.quiet {
+  color: var(--muted);
+}
+
+.danger {
+  color: #d33;
+}
+
+.notice {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.error {
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: #d33;
+  background: color-mix(in srgb, #d33 10%, transparent);
+}

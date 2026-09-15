@@ -21,7 +21,21 @@ export const nativeTransport: BridgeTransport = {
         disconnect() {},
       };
     }
-    const port = api.connectNative(hostName);
+    let port: chrome.runtime.Port;
+    try {
+      port = api.connectNative(hostName);
+    } catch (err) {
+      // Optional permission not granted yet (E12): same as a missing host.
+      const reason = err instanceof Error ? err.message : String(err);
+      return {
+        post() {},
+        onMessage() {},
+        onDisconnect(cb) {
+          queueMicrotask(() => cb(reason));
+        },
+        disconnect() {},
+      };
+    }
     return {
       post(msg: BridgeMessage) {
         port.postMessage(msg);

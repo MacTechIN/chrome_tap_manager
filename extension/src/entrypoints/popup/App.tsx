@@ -501,6 +501,16 @@ export default function App() {
         >
           사이드 패널
         </a>
+        {' · '}
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            void browser.runtime.openOptionsPage();
+          }}
+        >
+          설정
+        </a>
       </p>
       <Show when={stats()}>
         <p class="hint stats" title="진단 정보 (열림/전체)">
